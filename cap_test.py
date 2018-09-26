@@ -6,6 +6,7 @@ import numpy as np
 # the modules that you can use to generate the policy.
 import policy.patrol 
 import policy.random
+import policy.stay_still
 
 start_time = time.time()
 env = gym.make("cap-v0") # initialize the environment
@@ -17,8 +18,8 @@ total_score = 0
 # reset the environment and select the policies for each of the team
 observation = env.reset(map_size=20,
                         render_mode="env",
-                        policy_blue=policy.patrol.PolicyGen(env.get_map, env.get_team_blue),
-                        policy_red=policy.random.PolicyGen(env.get_map, env.get_team_red))
+                        policy_blue = policy.stay_still.PolicyGen(env.get_map, env.get_team_blue),
+                        policy_red = policy.random.PolicyGen(env.get_map, env.get_team_red))
 
 while True:
     while not done:
@@ -28,6 +29,7 @@ while True:
         # or select an action manually
         # and the apply the selected action to blue team
         # or use the policy selected and provided in env.reset 
+        
         #action = env.action_space.sample()  # choose random action
         #action = policy_blue.gen_action(env.team1,observation,map_only=env.team_home)
         #action = [0, 0, 0, 0]
