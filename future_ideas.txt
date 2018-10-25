@@ -1,0 +1,27 @@
+- Game Ideas
+1. Health mechanic
+2. Best-of rounds feature (i.e. a team only wins after winning 3 of 5 rounds in a match)
+3. Real-life CTF rules 
+    - the team has to grab the flag and return it to their base
+        - they can still be tagged while in enemy territory, and the flag would either be dropped, or immediately returned to the enemy base
+        - a base is only a small part of the territory
+    - tagged enemies go to a jail area (that may or may not be the same as the enemy base) that the other team can attempt to rescue them from by going to the jail and tagging them
+    - enemies are safe within an area around the flag
+4. Fuzzy territories (i.e. Star Wars Battlefront,  Battlefield Conquest mode)
+    - instead of flags, there are 'command posts' that assert your team's presence around an area
+5. Character classes (i.e. Team Fortress 2, Battlefield, Star Wars Battlefront)
+6. Improve map generation
+
+-------------------------------------------------------
+- RL Ideas
+
+1. Introduce partial observability, work with a POMDP framework instead of an MDP 
+2. Decentralized control -> each agent learns independently, but they somehow learn to work together
+3. https://deepmind.com/blog/capture-the-flag/
+4. Train against randomly sampled opponents of similar skill level (like Monte Carlo methods for EDL)
+5. Genetic evolution algorithms to improve agents on a generation-by-generation basis
+6. use a CNN to look at the screen and feed that into the Q-function estimation network a la Mnih 2015, Atari
+7. Tabular Q-Learning using direct state information from the environment
+
+-------------------------------------------------------
+

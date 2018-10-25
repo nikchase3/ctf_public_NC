@@ -1,12 +1,6 @@
-"""Random agents policy generator.
-
-This module demonstrates an example of a simple heuristic policy generator
-for Capture the Flag environment.
-    http://github.com/osipychev/missionplanner/
-
-DOs/Denis Osipychev
-    http://www.denisos.com
-"""
+'''
+Generates a 'do nothing' command for all 4 agents at each timestep
+'''
 
 import numpy as np
 
@@ -49,6 +43,5 @@ class PolicyGen:
         action_out = []
         
         for i in agent_list:
-            # action_out.append(self.random.randint(0, 5)) # choose random action
             action_out.append(0)
         return action_out

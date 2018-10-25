@@ -1,5 +1,3 @@
-
-
 # TeamConst
 """ Defining the constants for agents and teams """
 RED = 10
