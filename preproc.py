@@ -27,7 +27,7 @@ DOWN = 3
 LEFT = 4
 ACTION_SPACE = [STAY, UP, RIGHT, DOWN, LEFT]
 
-def parse_obs(self, obs, x, y):
+    def parse_obs(self, obs, x, y):
         # the channel number for different features
         # Channel 0: INVISIBLE: 1
         # Channel 1: Team1_Background VS Team2_Background: 1 VS -1
@@ -82,4 +82,3 @@ def parse_obs(self, obs, x, y):
                     parsed_obs[i][j][4] = 1
 
         return parsed_obs
-

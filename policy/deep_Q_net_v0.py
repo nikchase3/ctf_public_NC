@@ -1,5 +1,4 @@
 '''
-TODO: look at this 
 https://gist.github.com/simoninithomas/7611db5d8a6f3edde269e18b97fa4d0c#file-deep-q-learning-with-doom-ipynb
 https://pytorch.org/tutorials/intermediate/reinforcement_q_learning.html#sphx-glr-download-intermediate-reinforcement-q-learning-py
 
@@ -7,39 +6,22 @@ Implementation of Q-Learning for the CTF environment
 
 Created Date: Wednesday, October 3rd 2018, 5:52:26 pm
 Author: Jacob Heglund
-Questions:
 
-- Assumptions
-1. Partial Observability
-    - at each timestep, the each team team recieves all information that their respective team members observe
-    - this aggregate information is then put together into a of the environment, which is sent into the Q-network
-
-2. fully deterministic environment
-    - an action has a 100% probability of occuring if specified in the state vector
-
-X1. full state observability (didn't use b/c I would need to figure out how to get the 'top down view' as the input to the NN)
-    - an agent takes in the raw pixel values for the entire map as input
-X2. a centralized agent controls each team (didn't use b/c I would need to figure out how to get a tuple of actions from the network)
-    - the agent's state at any timestep is a tuple containing 4, (x,y) positions in the map
-
-- Implementation Notes v0
-1. Uses Q-Learning by taking in full observation space and spitting out actions for each of the 4 team members
-2. Utilizes a CNN to process spatial information
-    - the partially observable map is fed directly into the CNN 
+- for an easier first implementation, just deal with 1 blue team agent, the rest are removed from the sim
+- also, give the agent full state observability
 '''
-
-
-#TODO - high level things 
-# for now we'll have Q-Learning for only 1 agent, the rest will stay still
-# do frozen lake with function approximation, then port the code over to this environment
-
 ###########################################
+from policy.ddqn import myDQN, ReplayBuffer
+
 # regular python stuff
 import os
 import numpy as np
 from numpy import shape
 import time
+import math
 import matplotlib.pyplot as plt
+from collections import deque
+import random
 
 # torch neural net stuff
 import torch
@@ -54,6 +36,7 @@ from torchvision import models
 import torchvision.transforms as transforms
 
 ###########################################
+# class for generating actions from observations
 class PolicyGen:
     """Policy generator class for CtF env.
     
@@ -64,21 +47,59 @@ class PolicyGen:
         gen_action: Required method to generate a list of actions.
     """
     
-    def __init__(self, free_map, agent_list):
+    def __init__(self, env, device, free_map, agent_list):
+        super().__init__()
         """Constuctor for policy class.
         
         This class can be used as a template for policy generator.
         
         Args:
-            free_map (np.array): 2d map of static environment.
+            free_map (np.array): 2d map of static environment (use as observation for the fully observable case)
             agent_list (list): list of all friendly units.
         """
+        self.env = env
+        #TODO set these in the training file
+        # hyperparameters for DDQN
+        # explore probability: set to decay over time using epsilon_by_frame
+        self.epsilon_start = 1.0
+        self.epsilon_final = 0.01
+        self.epsilon_decay = 10000
+
+        # future reward discount
+        self.gamma = 0.99
+
+        # number of past frames stored in replay buffer
+        self.replay_buffer_size = 1000
+
+        # total number of frames that will be run
+        self.num_frames = 1000   
         
-    def gen_action(self, agent_list, observation, free_map=None):
+        # number of frames sampled from replay buffer
+        self.batch_size = 100
+
+        self.num_states = int(self.env.observation_space_blue.shape[0] * self.env.observation_space_blue.shape[1])
+        self.num_actions = int(self.env.action_space.n)
+
+        # init 
+        self.device = device
+        #TODO generalize to red and blue
+        #TODO change sizes for the number of agents 
+        self.current_model = myDQN(self.num_states, self.num_actions)
+        self.target_model  = myDQN(self.num_states, self.num_actions)
+
+        # send to GPU if available, otherwise keep on CPU
+        self.current_model = self.current_model.to(self.device)
+        self.target_model = self.target_model.to(self.device)
+
+        self.replay_buffer = ReplayBuffer(self.replay_buffer_size)
+
+        self.optimizer = optim.Adam(self.current_model.parameters())
+
+    def gen_action(self, agent_list, observation, frame_idx, train, free_map=None):
         """Action generation method.
 
         This is a required method that generates list of actions corresponding 
-        to the list of units. 
+        to the list of units.
         
         Args:
             agent_list (list): list of all friendly units.
@@ -88,114 +109,88 @@ class PolicyGen:
         Returns:
             action_out (list): list of integers as actions selected for team.
         """
-        '''
-        ##################################
-        # visualization code
-        #TODO: plots for loss over time
-        #TODO: plots for reward over time
-        #TODO: duration of each training episode over tiem
-
-        ##################################
-        # learning model 
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        #TODO: implement TD Loss -> allows us to update the Q function 
-        # in a way consistent with the Bellman Equation
+        #TODO add multiple agent functionality with a for loop 
         
-        #TODO: choose an optimizer
-        optim
-        #TODO: double check experience replay implementation
-        # i have two papers to read about this  
-        class ReplayMemory(object):
-            def __init__(self, capacity):
-                self.capacity = capacity
-                self.memory = []
-                self.position = 0
+        if train == True:
+            epsilon = self.epsilon_by_frame(frame_idx)
+            if random.random() > epsilon:
+                state = observation
+                state = torch.FloatTensor(np.float32(state))
+                state = state.to(self.device).unsqueeze(0).unsqueeze(0)
+                q_value =  self.current_model.forward(state)
+                max_q, action = q_value[0].max(0)
+                max_q = float(max_q)
+                action = int(action)
+                
+            else:
+                action = random.randrange(self.num_actions)
 
-            def push(self, *args):
-                """Saves a transition."""
-                if len(self.memory) < self.capacity:
-                    self.memory.append(None)
-                self.memory[self.position] = Transition(*args)
-                self.position = (self.position + 1) % self.capacity
+        elif train == False:
+            #TODO fix the CNN input dimensions here
+            state = observation.flatten()
+            state = torch.FloatTensor(np.float32(state))
+            state = state.to(self.device)
+                
+            q_value =  self.current_model.forward(state)
+            max_q, action = q_value.max(0)
 
-            def sample(self, batch_size):
-                return random.sample(self.memory, batch_size)
-
-            def __len__(self):
-                return len(self.memory)
-
-        # model
-        #I need to figure out how to get the Q-network to output multiple values
-        # to control multiple agents at the same time
-        class DQN(nn.Module):
-            def __init__(self):
-                #TODO: this seems like a relatively common DQN network architecture, but
-                # check around to see if there are any better
-                # extending to a deep network is super easy now using Pytorch!
-                super(DQN, self).__init__()
-                self.conv1 = nn.Conv2d(1, 16, 5, 2)
-                self.bn1 = nn.BatchNorm2d(16)
-                self.conv2 = nn.Conv2d(16, 32, 5, 2)
-                self.bn2 = nn.BatchNorm2d(32)
-                self.conv3 = nn.Conv2d(32, 32, 5, 2)
-                self.bn3 = nn.BatchNorm2d(32)
-                #TODO: check this is the right size
-                self.fc = nn.Linear(448, self.sizeOutput)
-            
-            def forward(self, x):
-                x = F.relu(self.bn1(self.conv1(x)))
-                x = F.relu(self.bn2(self.conv2(x)))
-                x = F.relu(self.bn3(self.conv3(x)))
-                x = x.view(x.size(0), -1)
-                x = self.fc(x)
-                return x
-        
-        
-        ###########################
-        # functions for training
-        def obs2vec(x):
-            #take the input observation and return a float vector
-            return x.astype(np.float).ravel()
-
-        
-        #TODO: implement an epsilon greedy action 
-        def chooseAction(state):
-            print('stuff')
-            #TODO: set a threshold for epsilon, if above, take the "optimal action" as specified by Q values
-            # otherwise, take a random action
-            
-            #TODO: decay epsilon over time
-        ###########################
-        # define model, hyperparameters, and environment parameters
+        #TODO get all agent actions for one team here
         action_out = []
-        self.sizeInput = 20 * 20 # size of the environment
-        self.sizeOutput = 5 # size of the action space (for one agent)
-
-        model = DQN().to(device)
-
-        
-            
-        ###########################
-
-        def train():
-            model.train()
-
-            #TODO batch memory
-
-            # 
-            
-            # compute Q values for current state and action
-
-            # compute value function for next timestep
-
-            # computer Huber Loss
-
-            # optimize model
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-
-
-        '''
-        action_out = [0, 0, 0, 0] # TODO: remove this, do nothing at each timestep
+        action_out.append(action)
         return action_out
+                
+    #######################   
+    # functions for DDQN
+    def update_target_network(self):
+        self.target_model.load_state_dict(self.current_model.state_dict())
+
+    def compute_td_loss(self, batch_size):
+        state, action, reward, next_state, done = self.replay_buffer.sample(batch_size)
+
+
+        state = torch.FloatTensor(np.float32(state)).to(self.device).unsqueeze(1)
+        next_state = torch.FloatTensor(np.float32(next_state)).to(self.device).unsqueeze(1)
+        action = torch.LongTensor(action).to(self.device)
+        reward = torch.FloatTensor(reward).to(self.device)
+        done = torch.FloatTensor(done).to(self.device)
+        
+        q_values = self.current_model.forward(state)
+        next_q_values = self.current_model.forward(next_state)
+        next_q_state_values = self.target_model.forward(next_state)
+
+        q_value       = q_values.gather(1, action).squeeze(1)
+        next_q_value = next_q_state_values.gather(1, torch.max(next_q_values, 1)[1].unsqueeze(1)).squeeze(1)
+        expected_q_value = reward + self.gamma * next_q_value * (1 - done)
+        
+        loss = (q_value - Variable(expected_q_value.data)).pow(2).mean()
+            
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+        
+        return loss
+
+    def plot(self, frame_idx, rewards, losses):
+        #clear_output(True)
+        plt.figure(figsize=(20,5))
+        plt.subplot(131)
+        plt.title('frame %s. reward: %s' % (frame_idx, np.mean(rewards[-10:])))
+        plt.plot(rewards)
+        plt.subplot(132)
+        plt.title('loss')
+        plt.plot(losses)
+        plt.show()
+
+    def epsilon_by_frame(self, frame_idx):
+        epsilon_curr = self.epsilon_final + (self.epsilon_start - self.epsilon_final) * math.exp(-1. * frame_idx / self.epsilon_decay)
+        
+        return epsilon_curr
+    
+
+
+
+
+
+
+
+

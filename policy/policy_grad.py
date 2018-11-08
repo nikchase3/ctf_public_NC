@@ -57,8 +57,8 @@ class PolicyGen:
             self.model = pickle.load(open('save.p', 'rb'))
         except:
             self.model = {}
-            self.model['W1'] = np.random.randn(self.H, self.D) / np.sqrt(self.D)  # "Xavier" initialization
-            self.model['W2'] = np.random.randn(self.K, self.H) / np.sqrt(self.H)
+            self.model['W1'] = np.random.randn(H, D) / np.sqrt(D)  # "Xavier" initialization
+            self.model['W2'] = np.random.randn(K, H) / np.sqrt(H)
 
 
         self.free_map = free_map 
@@ -106,6 +106,7 @@ class PolicyGen:
         logp = np.dot(self.model['W2'], h)
         p = sigmoid(logp)
         return p, h  # return probability of taking action 2, and hidden state
+
 
     def policy_backward(self, eph, epdlogp, epx):
         """ backward pass. (eph is array of intermediate hidden states) """
