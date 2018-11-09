@@ -15,7 +15,7 @@ import torchvision.transforms as transforms
 import gym
 from gym import wrappers
 import gym_cap
-
+'''
 with open('./checkpoints/episode_data.txt', 'r') as f:
     episode_data = np.loadtxt(f)
 
@@ -27,3 +27,9 @@ avg_duration = np.mean(episode_duration_arr)
 print(avg_duration, ' frames')
 #plt.plot(episode_arr, episode_duration_arr)
 #plt.show()
+'''
+
+num_episodes = 10
+episode_arr = np.arange(0, num_episodes, 1).reshape(1, -1)
+episode_duration_list = np.zeros([1, num_episodes])
+print(np.shape(episode_arr))

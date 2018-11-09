@@ -69,7 +69,7 @@ class PolicyGen:
         self.gamma = 0.99
 
         # number of past frames stored in replay buffer
-        self.replay_buffer_size = 1000
+        self.replay_buffer_size = 10000
 
         # total number of frames that will be run
         self.num_frames = 1000   

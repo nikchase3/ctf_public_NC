@@ -31,7 +31,7 @@ os.chdir(dname)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(device)
-
+#################################
 def plot_training_data(frame_idx, loss_list, frame_list, episode_list, episode_duration_list, reward_list):
     fig, axs = plt.subplots(nrows=3, ncols=1, constrained_layout=True)
     ax = axs[0]
@@ -74,9 +74,7 @@ def save_training_data(frame_idx, model, loss_list, frame_list, episode_list, ep
 
     # save data for each episode
     episode_fn = 'episode_data.txt'
-    episode_list = np.array(episode_list)
-    episode_duration_list = np.array(episode_duration_list)
-    reward_list = np.array(reward_list)
+    
     episode_save = np.vstack((episode_list, reward_list, episode_duration_list))
 
     episode_path = os.path.join(ckpt_dir, episode_fn)
@@ -84,12 +82,13 @@ def save_training_data(frame_idx, model, loss_list, frame_list, episode_list, ep
         np.savetxt(f, episode_save)
     
     plot_training_data(frame_idx, loss_list, frame_list, episode_list, episode_duration_list, reward_list)
+
 #################################
 # this file contains a training loop that interfaces with DDQN to train it
 if __name__ == '__main__': 
     #TODO consolidate all hyperparameters into one area of the code
-    num_frames = 1000000
-    batch_size = 50
+    batch_size = 100
+    max_frames_per_episode = 150
 
     # set checkpoint save directory
     ckpt_paths = []
@@ -98,67 +97,80 @@ if __name__ == '__main__':
     if not dir_exist:
         os.mkdir(ckpt_dir)
     
-    # set policies for 
+    # set policies for each team
     policy_blue =  policy.deep_Q_net_v0.PolicyGen(env, device, env.get_map, env.get_team_blue)
     policy_red = policy.random.PolicyGen(env.get_map, env.get_team_red)
     
     env.reset(map_size=20, policy_blue = policy_blue, policy_red = policy_red)
     
     agent_list_blue = env.get_team_blue
+
     # set current_model and target_model to be identical before starting training
     policy_blue.update_target_network()
 
-    # recording model performance
-    num_episodes = 0
-    episode_list = [] # episodes for which there is a reward
-    episode_list.append(0)
-    episode_duration_list = [] # number of frames each episode takes to complete
-    reward_list = [] # reward for each episode
-    reward_list.append(0)
-    episode_duration_list.append(0)
-    
-    episode_reward = 0
+    # episode_arr = np.arange(0, num_episodes, 1).reshape(1, -1)
+    # episode_duration_list = np.zeros([1, num_episodes])
 
+    # recording model performance
+    #TODO add features to allow for stopping of the sim, then picking up where we left off 
+    #TODO includes saving current episode list, durations, frames, and losses when the sim is stopped
+
+    num_episodes = 100000
+    episode_list = np.arange(0, num_episodes, 1)
+    episode_duration_list = np.zeros(num_episodes) # number of frames it takes to complete each episode 
+    reward_list = np.zeros(num_episodes) # reward for each episode
+        
     frame_list = [] # frames for which loss is computed
     loss_list = []
 
-    ###################################
-    frame_start = 1
-    for frame_idx in range(frame_start, num_frames + 1):
-        # fully observable state
-        state = env.get_full_state
-        action = policy_blue.gen_action(agent_list_blue, state, frame_idx, train = True)
-        next_state, reward, done, _ = env.step(action)
-        policy_blue.replay_buffer.push(state, action, reward, next_state, done)
-        episode_reward += reward
-        # if the end condition for an episode (one game of capture the flag) is met
-        if done:
-            num_episodes += 1
-            reward_list.append(episode_reward)
-            episode_list.append(num_episodes)
-            episode_reward = 0
-            frame_end = frame_idx
-            episode_duration_list.append(frame_end - frame_start)
-            frame_start = frame_idx+1
-            env.reset(map_size=20, policy_blue = policy_blue, policy_red = policy_red)
-        
-        if len(policy_blue.replay_buffer) > batch_size:
-            loss = policy_blue.compute_td_loss(batch_size)
-            loss_list.append(loss.item())
-            frame_list.append(frame_idx)
+    def play_episode(frame_idx):
+        env.reset(map_size=20, policy_blue = policy_blue, policy_red = policy_red)
+        done = 0
+        episode_reward = 0
+        episode_duration = 0 # amount of frames played for this episode
+        while not done:
+            episode_duration += 1
+            frame_idx += 1
+            state = env.get_full_state
+            action = policy_blue.gen_action(agent_list_blue, state, frame_idx, train = True)
+            next_state, reward, done, _ = env.step(action)
+            policy_blue.replay_buffer.push(state, action, reward, next_state, done)
+            episode_reward += reward
+
+            if episode_duration > max_frames_per_episode:
+                done = 1
+
+            if done:
+                return frame_idx, episode_reward, episode_duration
+
+            if len(policy_blue.replay_buffer) > batch_size:
+                loss = policy_blue.compute_td_loss(batch_size)
+                loss_list.append(loss.item())
+                frame_list.append(frame_idx)
+
+            # update target network
+            if frame_idx % 100 == 0:
+                policy_blue.update_target_network()
             
-        if frame_idx % 2500 == 0:
-            print('Frame_idx: {} / {}'.format(frame_idx, num_frames))
+            # save checkpoints and training data
+            if frame_idx % 25000 == 0:
+                model = policy_blue.current_model
+                save_training_data(frame_idx, model, loss_list, frame_list, episode_list, episode_duration_list, reward_list)
+
+    ###################################
+    frame_idx = 1
+    time_start = time.time()
+    for episode in range(num_episodes):
+        print(episode)
+        # print updates to console
+        if episode % 10 == 0:
+            print('Episode: {} / {} ---- Runtime: {}'.format(episode, num_episodes, round(time.time()-time_start, 3)))
             #TODO plot stuff?
+        
+        frame_idx, episode_reward, episode_duration = play_episode(frame_idx)
+        reward_list[episode] = episode_reward
+        episode_duration_list[episode] = episode_duration
 
-        if frame_idx % 100 == 0:
-            policy_blue.update_target_network()
-
-        # save checkpoints and training data every so often
-        if frame_idx % 25000 == 0:
-            model = policy_blue.current_model
-            save_training_data(frame_idx, model, loss_list, frame_list, episode_list, episode_duration_list, reward_list)
-    
     # save filepaths of all checkpoints
     ckpt_names_fn = 'checkpoint_paths.txt'
     ckpt_names_path = os.path.join(ckpt_dir, ckpt_names_fn)
