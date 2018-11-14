@@ -34,9 +34,15 @@ class myDQN(nn.Module):
         self.conv3 = nn.Conv2d(10, 10, 3, 1, 0)
         self.bn3 = nn.BatchNorm2d(10)
 
-        self.fc1 = nn.Linear(90, 50)
+        #TODO generalize this size for any map, using a 10x10 mape gives out = 1x10 after flattening
+        # self.fc1 = nn.Linear(90, 50)
+        # self.fc2 = nn.Linear(50, 50)
+        # self.fc3 = nn.Linear(50, 5)
+
+        self.fc1 = nn.Linear(10, 50)
         self.fc2 = nn.Linear(50, 50)
         self.fc3 = nn.Linear(50, 5)
+
 
         self.relu = nn.ReLU(inplace=True)
         self.pool = nn.MaxPool2d(4)

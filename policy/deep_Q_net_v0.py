@@ -47,7 +47,7 @@ class PolicyGen:
         gen_action: Required method to generate a list of actions.
     """
     
-    def __init__(self, env, device, free_map, agent_list):
+    def __init__(self, env, device, free_map, agent_list, hyperparam_dict):
         super().__init__()
         """Constuctor for policy class.
         
@@ -58,40 +58,26 @@ class PolicyGen:
             agent_list (list): list of all friendly units.
         """
         self.env = env
-        #TODO set these in the training file
-        # hyperparameters for DDQN
-        # explore probability: set to decay over time using epsilon_by_frame
-        self.epsilon_start = 1.0
-        self.epsilon_final = 0.01
-        self.epsilon_decay = 10000
-
-        # future reward discount
-        self.gamma = 0.99
-
-        # number of past frames stored in replay buffer
-        self.replay_buffer_size = 10000
-
-        # total number of frames that will be run
-        self.num_frames = 1000   
+        self.epsilon_start = hyperparam_dict["epsilon_start"]
+        self.epsilon_final = hyperparam_dict["epsilon_final"]
+        self.epsilon_decay = hyperparam_dict["epsilon_decay"]
+        self.gamma = hyperparam_dict["gamma"]
         
-        # number of frames sampled from replay buffer
-        self.batch_size = 100
-
         self.num_states = int(self.env.observation_space_blue.shape[0] * self.env.observation_space_blue.shape[1])
         self.num_actions = int(self.env.action_space.n)
 
-        # init 
         self.device = device
         #TODO generalize to red and blue
-        #TODO change sizes for the number of agents 
+        #TODO generalize sizes for the number of agents, different maps
+        #TODO do this init in the training file, not here!
         self.current_model = myDQN(self.num_states, self.num_actions)
         self.target_model  = myDQN(self.num_states, self.num_actions)
 
         # send to GPU if available, otherwise keep on CPU
+        #TODO do this init in the training file, not here!
         self.current_model = self.current_model.to(self.device)
         self.target_model = self.target_model.to(self.device)
-
-        self.replay_buffer = ReplayBuffer(self.replay_buffer_size)
+        self.replay_buffer = ReplayBuffer(hyperparam_dict["replay_buffer_size"])
 
         self.optimizer = optim.Adam(self.current_model.parameters())
 
@@ -124,9 +110,10 @@ class PolicyGen:
                 
             else:
                 action = random.randrange(self.num_actions)
-
+        
+        # for evaluation
         elif train == False:
-            #TODO fix the CNN input dimensions here
+            #TODO fix the CNN input dimensions
             state = observation.flatten()
             state = torch.FloatTensor(np.float32(state))
             state = state.to(self.device)
