@@ -32,17 +32,17 @@ os.chdir(dname)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(device)
 #################################
-def plot_training_data():
+def plot_training_data(episode_list, mean_reward_list, mean_duration_list):
     fig, axs = plt.subplots(nrows=2, ncols=1, constrained_layout=True)
     ax = axs[0]
-    ax.plot(mean_episode_list, mean_duration_list)
-    ax.set_xlabel('Episode Number')
-    ax.set_ylabel('Duration (running avg.)')
+    ax.plot(episode_list, mean_duration_list)
+    ax.set_xlabel('Episode Number\n*moving average taken over past {} frames'.format(num_avg_episodes))
+    ax.set_ylabel('Duration (frames)')
 
     ax = axs[1]
-    ax.plot(mean_episode_list, mean_reward_list)
-    ax.set_xlabel('Episode Number')
-    ax.set_ylabel('Reward (running avg.)')
+    ax.plot(episode_list, mean_reward_list)
+    ax.set_xlabel('Episode Number\n*moving average over past {} frames'.format(num_avg_episodes))
+    ax.set_ylabel('Reward')
     
     fig_fn = 'training_data_' + str(episode) + '.png'
     fig_path = os.path.join('./checkpoints', fig_fn)
@@ -72,9 +72,9 @@ if __name__ == '__main__':
     batch_size = 32
     num_episodes = 200000
     max_frames_per_episode = 50
-    save_checkpoint_episode = 100
-    print_update_episode = 100
-    num_avg_episodes = 10
+    save_checkpoint_episode = 1000
+    print_update_episode = 1000
+    num_avg_episodes = 50
 
     buffer_init = 100000 # number of frames to simulate before we start sampling from the buffer
     train_online_network_frame = 4 # number of frames between training of the online network (see Hasselt 2016 - DDQN)
@@ -117,9 +117,9 @@ if __name__ == '__main__':
     episode_duration_list = np.zeros(num_episodes) # number of frames it takes to complete each episode 
     reward_list = np.zeros(num_episodes) # reward for each episode
 
-    mean_episode_list = np.zeros(num_episodes - num_avg_episodes)
-    mean_reward_list = np.zeros(num_episodes - num_avg_episodes)
-    mean_duration_list = np.zeros(num_episodes - num_avg_episodes)
+    mean_reward_list = np.zeros(num_episodes)
+    mean_duration_list = np.zeros(num_episodes)
+    
     def play_episode(frame_idx):
         env.reset(map_size = map_size, policy_blue = policy_blue, policy_red = policy_red)
         done = 0
@@ -160,26 +160,26 @@ if __name__ == '__main__':
         reward_list[episode] = episode_reward
         episode_duration_list[episode] = episode_duration
 
-        save_idx = np.argmax(episode_duration_list == 0)
-        episode_list_save = episode_list[0:save_idx]
-        episode_duration_list_save = episode_duration_list[0:save_idx]
-        reward_list_save = reward_list[0:save_idx]
+        curr_idx = np.argmax(episode_duration_list == 0)
+        episode_list_curr = episode_list[0:curr_idx]
+        episode_duration_list_curr = episode_duration_list[0:curr_idx]
+        reward_list_curr = reward_list[0:curr_idx]
 
-        # get a running average of reward and episode duration
-        #TODO: get a moving average 
-        # get the rewards and durations for a number episodes before current episode
-        if episode > num_avg_episodes:
-            reward_mean = np.mean(reward_list[-num_avg_episodes:])
-            duration_mean = np.mean(episode_duration_list[-num_avg_episodes:])
+        # get a moving average of rewards and durations
+        if episode >= num_avg_episodes:
+            reward_mean = np.mean(reward_list_curr[-num_avg_episodes:])
+            duration_mean = np.mean(episode_duration_list_curr[-num_avg_episodes:])
 
             mean_reward_list[episode] = reward_mean
             mean_duration_list[episode] = duration_mean
-            mean_episode_list[episode] = episode
+        mean_episode_list_curr = episode_list_curr[num_avg_episodes:]
+        mean_reward_list_curr = mean_reward_list[num_avg_episodes:curr_idx]
+        mean_duration_list_curr = mean_duration_list[num_avg_episodes:curr_idx]
+
+
         # take the average over this array
         # save that data along with the episode
 
-        save_training_data()
-        
         if (episode % print_update_episode) == 0:
             print('Episode: {} / {} ---- Runtime: {}'.format(episode, num_episodes, round(time.time()-time_start, 3)))
         
@@ -187,7 +187,9 @@ if __name__ == '__main__':
             if episode != 0:
                 curr_model = policy_blue.current_model
                 save_checkpoint(episode, curr_model)
-                plot_training_data()
+                save_training_data()
+                plot_training_data(mean_episode_list_curr, mean_reward_list_curr, mean_duration_list_curr)
+                
 
     # save filepaths of all checkpoints
     ckpt_names_fn = 'checkpoint_paths.txt'
