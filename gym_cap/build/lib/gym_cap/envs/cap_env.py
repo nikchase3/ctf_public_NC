@@ -31,7 +31,7 @@ class CapEnv(gym.Env):
         self    : object
             CapEnv object
         """
-        self.seed()
+        self.seed(  )
         self.reset(map_size, mode=mode)
         self.viewer = None
         if STOCH_ATTACK:
@@ -300,8 +300,6 @@ class CapEnv(gym.Env):
         """
         Takes one step in the cap the flag game
 
-
-
         :param
             entities_action: contains actions for entity 1-n
             cur_suggestions: suggestions from rl to human
@@ -316,7 +314,6 @@ class CapEnv(gym.Env):
         """
 
         move_list = []
-
         # Get actions from uploaded policies
         try:
             move_list_red = self.policy_red.gen_action(self.team_red,self.observation_space_red,free_map=self.team_home)
@@ -469,7 +466,6 @@ class CapEnv(gym.Env):
     #     if self.viewer is not None:
     #         self.viewer.close()
     #         self.viewer = None
-
 
 # Different environment sizes and modes
 # Random modes

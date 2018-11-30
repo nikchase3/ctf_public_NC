@@ -65,10 +65,6 @@ class PolicyGen:
         self.num_states = int(self.env.observation_space_blue.shape[0] * self.env.observation_space_blue.shape[1])
         self.num_actions = int(self.env.action_space.n)
 
-        self.device = device
-        #TODO generalize to red and blue
-        #TODO generalize sizes for the number of agents, different maps
-        #TODO do this init in the training file, not here!
         self.current_model = myDQN(self.num_states, self.num_actions)
         self.target_model  = myDQN(self.num_states, self.num_actions)
 
@@ -126,41 +122,6 @@ class PolicyGen:
         return action_out
                 
     #######################   
-    # functions for DDQN
-    def update_target_network(self):
-        self.target_model.load_state_dict(self.current_model.state_dict())
-
-    def compute_td_loss(self, batch_size):
-        state, action, reward, next_state, done = self.replay_buffer.sample(batch_size)
-
-        state = torch.FloatTensor(np.float32(state)).to(self.device).unsqueeze(1)
-        next_state = torch.FloatTensor(np.float32(next_state)).to(self.device).unsqueeze(1)
-        action = torch.LongTensor(action).to(self.device)
-        reward = torch.FloatTensor(reward).to(self.device)
-        done = torch.FloatTensor(done).to(self.device)
-        
-        q_values = self.current_model.forward(state)
-        next_q_values = self.current_model.forward(next_state)
-        next_q_state_values = self.target_model.forward(next_state)
-
-        q_value       = q_values.gather(1, action).squeeze(1)
-        next_q_value = next_q_state_values.gather(1, torch.max(next_q_values, 1)[1].unsqueeze(1)).squeeze(1)
-        expected_q_value = reward + self.gamma * next_q_value * (1 - done)
-        
-        loss = (q_value - Variable(expected_q_value.data)).pow(2).mean()
-            
-        self.optimizer.zero_grad()
-        loss.backward()
-        self.optimizer.step()
-        
-        return loss
-
-    def epsilon_by_frame(self, frame_idx):
-        epsilon_curr = self.epsilon_final + (self.epsilon_start - self.epsilon_final) * math.exp(-1. * frame_idx / self.epsilon_decay)
-        
-        return epsilon_curr
-    
-
 
 
 

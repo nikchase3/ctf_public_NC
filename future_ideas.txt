@@ -15,13 +15,10 @@
 -------------------------------------------------------
 - RL Ideas
 
-1. Introduce partial observability, work with a POMDP framework instead of an MDP 
 2. Decentralized control -> each agent learns independently, but they somehow learn to work together
 3. https://deepmind.com/blog/capture-the-flag/
 4. Train against randomly sampled opponents of similar skill level (like Monte Carlo methods for EDL)
 5. Genetic evolution algorithms to improve agents on a generation-by-generation basis
-6. use a CNN to look at the screen and feed that into the Q-function estimation network a la Mnih 2015, Atari
-7. Tabular Q-Learning using direct state information from the environment
 
 -------------------------------------------------------
 

@@ -6,7 +6,7 @@ import numpy as np
 
 # the modules that you can use to generate the policy.
 import policy.roomba
-import policy.random
+import policy.random_actions
 import policy.patrol
 import policy.defense
 import policy.stay_still
@@ -18,11 +18,11 @@ done = False
 t = 0
 rscore = []
 
-policy_blue = policy.random.PolicyGen(env.get_map, env.get_team_blue)
+policy_blue = policy.random_actions.PolicyGen(env.get_map, env.get_team_blue)
 policy_red = policy.stay_still.PolicyGen(env.get_map, env.get_team_red)
 
 # reset the environment and select the policies for each of the team
-observation = env.reset(map_size=20,
+observation = env.reset(map_size=10,
                         policy_blue=policy_blue,
                         policy_red=policy_red)
 
