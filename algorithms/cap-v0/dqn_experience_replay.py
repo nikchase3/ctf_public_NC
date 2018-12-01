@@ -12,6 +12,7 @@ import numpy as np
 from numpy import shape
 import matplotlib.pyplot as plt
 import pandas as pd
+import math
 import time
 from collections import deque
 import random
@@ -30,10 +31,10 @@ else:
     run_number = sys.argv[1]
 print('run number:', run_number)
 
+frame_count = 0
+first = 1
 ######################
-
 ## "deep" Q-network 
-#TODO only designed to take 1 image at a time -> upgrade to batches along with implementing replay buffer
 #TODO only has a single channel, will increasing channels help for this?
 
 class myDQN(nn.Module):
@@ -47,19 +48,22 @@ class myDQN(nn.Module):
 
         self.fc = nn.Linear(num_states, num_actions)
     
-    def forward(self, state):
+    def forward(self, state_batch):
         '''
         inputs{
-            state (fully observable state) - np array of values representing the world
+            state (fully observable state) - square np array of integers representing the grid-world
         } 
         outputs{
             out - Q values for the actions corresponding to the input state
         }
         '''
-        state = torch.from_numpy(state)
-        state = state.type(torch.cuda.FloatTensor)
-        state = state.unsqueeze(0).unsqueeze(0)
-
+        # input to CNN needs to be of the following form:
+        # dims_state = batch_size, num_channels (1), map_size_x, map_size_y
+        if np.shape(state_batch)[0] == batch_size:
+            state = torch.from_numpy(state_batch).type(torch.cuda.FloatTensor).unsqueeze(1)
+        else:
+            state = torch.from_numpy(state_batch).type(torch.cuda.FloatTensor).unsqueeze(0).unsqueeze(0)
+        
         out = self.conv1(state)
         out = self.relu(out)
        
@@ -72,7 +76,7 @@ class myDQN(nn.Module):
         out = out.view(out.size(0), -1)
         q_values = self.fc(out)
        
-        return q_values
+        return q_values.cpu()
 
 class ReplayBuffer(object):
     def __init__(self, capacity):
@@ -86,6 +90,10 @@ class ReplayBuffer(object):
     
     def sample(self, batch_size):
         state, action, reward, next_state, done = zip(*random.sample(self.buffer, batch_size))
+        action, reward, done = np.asarray(action), np.asarray(reward), np.asarray(done)
+        
+        action = torch.from_numpy(action).type(torch.LongTensor).unsqueeze(1)
+        reward = torch.from_numpy(reward).type(torch.FloatTensor)
         return np.concatenate(state), action, reward, np.concatenate(next_state), done
     
     def __len__(self):
@@ -105,7 +113,6 @@ def save_data(step_list, reward_list):
     with open(episode_path, 'w') as f:
         np.savetxt(f, episode_save)
 
-    plt.figure(figsize=[16,9])
     plt.subplot(211)
     plt.plot(pd.Series(reward_list).rolling(window).mean())
     plt.title('Reward Moving Average ({}-episode window)'.format(window))
@@ -142,7 +149,7 @@ def save_model(episode):
     save_path = os.path.join(ckpt_dir, model_fn)
     torch.save(online_model, save_path)
 
-def gen_action(state):
+def gen_action(state, epsilon):
     '''
     TODO: make it work for multiple agents
     action_list = []
@@ -160,65 +167,93 @@ def gen_action(state):
         action_list.append(action)
     '''    
     if np.random.rand(1) < epsilon:
-        q_values = online_model(state)
         action = env.action_space.sample()
 
     else:
-        q_values = online_model(state)
-        _, action = torch.max(q_values, 1)
-        action = action.item()
+        with torch.no_grad():
+            q_values = online_model(state)
+            _, action = torch.max(q_values, 1)
+            action = action.item()
 
-    return action, q_values
+    return action
+
+def epsilon_by_frame(frame_count):
+    epsilon_curr = epsilon_final + (epsilon_start - epsilon_final) * math.exp(-1. * frame_count / epsilon_decay)
+    return epsilon_curr
+
+def train_online_network(batch_size):
+    state_batch, action_batch, reward_batch, next_state_batch, done_batch = replay_buffer.sample(batch_size)
+    
+    # get all the q-values for actions at state and next state
+    q_values = online_model(state_batch)
+    next_q_values = online_model(next_state_batch)
+    
+    # find Q(s, a) for the action taken during the sampled transition
+    state_action_value = q_values.gather(1, action_batch).squeeze(1)
+    
+    # Find Q(s_next, a_next) for an optimal agent (take the action with max q-value in s_next)
+    next_state_action_value = next_q_values.max(1)[0]
+    
+    # if done, multiply next_state_action_value by 0, else multiply by 1
+    one = np.ones(batch_size)
+    done_mask = torch.from_numpy(one-done_batch).type(torch.FloatTensor)
+    
+    discounted_next_value = (gamma * next_state_action_value)
+    discounted_next_value = discounted_next_value.type(torch.FloatTensor)
+    
+    # Compute the target of current q-values
+    target_value = reward_batch + discounted_next_value * done_mask
+
+    loss = criterion(state_action_value, target_value)
+    
+    online_model.zero_grad()
+    loss.backward()
+    optimizer.step()
+    
+    return loss.item()
 
 def play_episode():
-    global epsilon
+    global frame_count, first
 
-    #this this gives the partially observable state
+    # this gives the partially observable state
     # state = env.reset(map_size = map_size, policy_red = policy_red)
     env.reset(map_size = map_size, policy_red = policy_red)
-
+    
     episode_length = 0.
-    episode_reward = 0.
     episode_loss = 0.
     done = 0
-    
+
     while (done == 0):
+        # set exploration rate for this frame
+        epsilon = epsilon_by_frame(frame_count)
+        
         state = env.get_full_state
-        action, q_value = gen_action(state)
+        action = gen_action(state, epsilon)
         next_state, reward, done, _ = env.step(entities_action = [action])
         episode_length += 1
-
+        frame_count += 1
+                
+        # stop the episode if it goes too long
         if episode_length >= max_episode_length:
+            reward = -100.
             done = True
 
+        # store the transition in replay buffer
+        replay_buffer.push(state, action, reward, next_state, done)
+
+        # train the network
+        if len(replay_buffer) > replay_buffer_init:
+            if first:
+                print('Start Training')
+                first = 0
+            if (frame_count % train_frame) == 0:
+                loss = train_online_network(batch_size)
+                episode_loss += loss
+
+        # end the episode         
         if done:
-            if reward == 0.0:
-                reward = -100
-            if reward > 0.0:
-                epsilon = 1./((episode/50)+10)
-            # end the episode
             return episode_loss, episode_length, reward, epsilon
-
-        next_q_value = online_model(next_state).cpu()
-        max_next_q_value, _ = torch.max(next_q_value.data, 1)
-        max_next_q_value = torch.FloatTensor(max_next_q_value)
         
-        with torch.no_grad():
-            target_q_value = q_value.data
-            target_q_value[0,action] = reward + torch.mul(max_next_q_value, gamma)
-
-        output = online_model(state)
-        loss = criterion(output, target_q_value)
-        episode_loss += loss.item()
-        
-        online_model.zero_grad()
-        loss.backward()
-        optimizer.step()
-        
-        episode_reward += reward
-        # state = next_state
-
-
 ######################
 # make environment
 env_id = 'cap-v0'
@@ -229,15 +264,26 @@ policy_red = policy.random_actions.PolicyGen(env.get_map, env.get_team_red)
 env.reset(map_size = map_size, policy_red = policy_red)
 
 # set hyperparameters
-# exploration rate
-epsilon = 0.05
+#TODO decaying exploration rate 
+# ideas
+# decay epsilon if the episode was successful
+# decay over the frames or episodes
+# use a smarter way to decay (entropy or something like that)
+epsilon_start = 1.0
+epsilon_final = 0.02
+epsilon_decay = 200000
 
-# future reward discount
-gamma = 0.99
+gamma = 0.99 # future reward discount
 
 num_episodes = 200000
-max_episode_length = 150
-learning_rate = 0.001
+max_episode_length = 50
+learning_rate = 0.01
+
+batch_size = 100 # number of transitions to sample from replay buffer
+replay_buffer_capacity = 100000
+replay_buffer_init = 20000 # number of frames to simulate before we start sampling from the buffer
+train_online_network_frame = 4 # number of frames between training of the online network (see Hasselt 2016 - DDQN)
+replay_buffer = ReplayBuffer(replay_buffer_capacity)
 
 # storage for plots
 step_list = []
@@ -254,7 +300,7 @@ num_actions = env.action_space.n
 # setup neural net q-function approximator
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(device)
-
+train_frame = 4 # train online network every train_frame frames 
 online_model = myDQN(num_states, num_actions)
 online_model.to(device)
 criterion = nn.MSELoss()
@@ -262,7 +308,7 @@ optimizer = optim.Adam(online_model.parameters(), lr=learning_rate)
 
 # set checkpoint save directory
 # ckpt_dir = './algorithms/cap-v0/checkpoints'
-ckpt_dir = './checkpoints' + str(run_number)
+ckpt_dir = './checkpoints_' + str(run_number)
 
 dir_exist = os.path.exists(ckpt_dir)
 if not dir_exist:
@@ -270,6 +316,7 @@ if not dir_exist:
 
 if __name__ == '__main__':
     time1 = time.time()
+    frame_count = 0
     for episode in range(num_episodes):
         loss, length, reward, epsilon = play_episode()
         
@@ -279,8 +326,8 @@ if __name__ == '__main__':
         reward_list.append(reward)
         epsilon_list.append(epsilon)
 
-        if episode % 100 == 0:
-            print('episode: {}/{} ---- Runtime: {}'.format(episode, num_episodes, round(time.time()-time1, 3)))
+        if episode % 500 == 0:
+            print('Run: {} ---- Episode: {}/{} ({}) ---- Runtime: {} '.format(run_number, episode, num_episodes, round(float(episode) / float(num_episodes), 3), round(time.time()-time1, 3)))
 
         if episode % 1000 == 0 and episode != 0:
             save_model(episode)

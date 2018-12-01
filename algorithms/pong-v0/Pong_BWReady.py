@@ -123,10 +123,11 @@ def compute_td_loss(batch_size):
     action     = Variable(torch.LongTensor(action))
     reward     = Variable(torch.FloatTensor(reward))
     done       = Variable(torch.FloatTensor(done))
-
+    
     q_values      = current_model(state)
     next_q_values = current_model(next_state)
     next_q_state_values = target_model(next_state)
+
 
     q_value       = q_values.gather(1, action.unsqueeze(1)).squeeze(1)
     next_q_value = next_q_state_values.gather(1, torch.max(next_q_values, 1)[1].unsqueeze(1)).squeeze(1)

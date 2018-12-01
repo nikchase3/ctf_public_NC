@@ -1,21 +1,21 @@
 ######################
 ## import custom modules
-import policy.random_actions
-import gym_cap
+import sys
+from pathlib import Path
+import os
 
+# # import dqn_policy
+import policy.random_actions
+
+import gym_cap
 ######################
 ## regular imports
-import sys
-import os
 import gym
 import numpy as np
 from numpy import shape
 import matplotlib.pyplot as plt
 import pandas as pd
 import time
-from collections import deque
-import random
-
 
 import torch
 import torch.nn as nn
@@ -32,7 +32,6 @@ else:
 print('run number:', run_number)
 
 ######################
-
 ## "deep" Q-network 
 #TODO only designed to take 1 image at a time -> upgrade to batches along with implementing replay buffer
 #TODO only has a single channel, will increasing channels help for this?
@@ -47,7 +46,6 @@ class myDQN(nn.Module):
         self.relu = nn.ReLU(inplace=True)
 
         self.fc = nn.Linear(num_states, num_actions)
-    
     def forward(self, state):
         '''
         inputs{
@@ -75,24 +73,13 @@ class myDQN(nn.Module):
        
         return q_values
 
-class ReplayBuffer(object):
-    def __init__(self, capacity):
-        self.buffer = deque(maxlen=capacity)
-    
-    def push(self, state, action, reward, next_state, done):
-        state      = np.expand_dims(state, 0)
-        next_state = np.expand_dims(next_state, 0)
-            
-        self.buffer.append((state, action, reward, next_state, done))
-    
-    def sample(self, batch_size):
-        state, action, reward, next_state, done = zip(*random.sample(self.buffer, batch_size))
-        return np.concatenate(state), action, reward, np.concatenate(next_state), done
-    
-    def __len__(self):
-        return len(self.buffer)
-
 ######################
+def one_hot(x, l):
+    x = torch.LongTensor([[x]])
+    one_hot = torch.FloatTensor(1,l)
+    return one_hot.zero_().scatter_(1,x,1)
+
+
 def save_data(step_list, reward_list):
     # window = int(num_episodes/10)
     window = 100
@@ -170,6 +157,7 @@ def gen_action(state):
         action = action.item()
 
     return action, q_values
+
 
 def play_episode():
     global epsilon
