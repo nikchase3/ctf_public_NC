@@ -6,6 +6,7 @@ import gym_cap
 ######################
 ## regular imports
 import sys
+import argparse
 import os
 import gym
 import numpy as np
@@ -25,14 +26,26 @@ from torch.autograd import Variable
 import torchvision.transforms as T
 
 ######################
-if len(sys.argv) == 1:
-    run_number = 0
-else:
-    run_number = sys.argv[1]
+parser = argparse.ArgumentParser(description = 'Set training parameters')
+parser.add_argument('--run', type = int, help = 'set the run number within a batch of sims', default = 0)
+parser.add_argument('--epi', type = int, help = 'set the episode of the checkpoint to load', default = 0)
+args = vars(parser.parse_args())
+
+run_number = args['run']
+load_ckpt = args['epi']
+
 print('run number:', run_number)
 
+# set checkpoint save directory
+ckpt_dir = './checkpoints_' + str(run_number)
+dir_exist = os.path.exists(ckpt_dir)
+if not dir_exist:
+    os.mkdir(ckpt_dir)
+
+######################
+#TODO if loading a checkpoint, make sure epsilon and frame count is reflected in that!
 frame_count = 0
-first = 1
+
 ######################
 ## "deep" Q-network 
 #TODO only has a single channel, will increasing channels help for this?
@@ -100,7 +113,8 @@ class ReplayBuffer(object):
         return len(self.buffer)
 
 ######################
-def save_data(step_list, reward_list):
+# file / data management
+def save_data(step_list, reward_list, loss_list, epsilon_list):
     # window = int(num_episodes/10)
     window = 100
     episode_fn = 'episode_data.txt'
@@ -108,40 +122,31 @@ def save_data(step_list, reward_list):
 
     step_list = np.asarray(step_list)
     reward_list = np.asarray(reward_list)
-    episode_save = np.vstack((step_list, reward_list))
+    loss_list = np.asarray(loss_list) 
+    epsilon_list = np.asarray(epsilon_list)
+    episode_save = np.vstack((step_list, reward_list, loss_list, epsilon_list))
 
     with open(episode_path, 'w') as f:
         np.savetxt(f, episode_save)
 
+    plt.figure(figsize = [10,8])
     plt.subplot(211)
-    plt.plot(pd.Series(reward_list).rolling(window).mean())
-    plt.title('Reward Moving Average ({}-episode window)'.format(window))
-    plt.ylabel('Reward')
-    plt.xlabel('Episode')
-
-    plt.subplot(212)
     plt.plot(pd.Series(step_list).rolling(window).mean())
     plt.title('Step Moving Average ({}-episode window)'.format(window))
     plt.ylabel('Moves')
     plt.xlabel('Episode')
 
-    # plt.subplot(413)
-    # plt.plot(pd.Series(loss_list).rolling(window).mean())
-    # plt.title('Loss Moving Average ({}-episode window)'.format(window))
-    # plt.ylabel('Loss')
-    # plt.xlabel('Episode')
-
-    # plt.subplot(414)
-    # plt.plot(epsilon_list)
-    # plt.title('Random Action Parameter')
-    # plt.ylabel('Chance Random Action')
-    # plt.xlabel('Episode')
+    plt.subplot(212)
+    plt.plot(pd.Series(reward_list).rolling(window).mean())
+    plt.title('Reward Moving Average ({}-episode window)'.format(window))
+    plt.ylabel('Reward')
+    plt.xlabel('Episode')
 
     plt.tight_layout(pad=2)
     # plt.show()
     file_name = 'training_data.png'
     file_path = os.path.join(ckpt_dir, file_name)
-    plt.savefig(file_path)
+    plt.savefig(file_path, dpi=300)
     plt.close()
     
 def save_model(episode):
@@ -149,6 +154,51 @@ def save_model(episode):
     save_path = os.path.join(ckpt_dir, model_fn)
     torch.save(online_model, save_path)
 
+def load_model(run_number, episode):
+    if (episode == 0):
+        online_model = myDQN(num_states, num_actions)
+        online_model = online_model.to(device)
+    else:
+        online_model = myDQN(num_states, num_actions)
+        
+        # load only the state dict
+        model_fn = 'dqn_episode_' + str(episode) + '.model'
+
+        model_path = os.path.join(ckpt_dir, model_fn)
+        load_model = torch.load(model_path)
+        online_model.load_state_dict(load_model.state_dict())
+        online_model = online_model.to(device)
+    return online_model
+
+def setup_storage(run_number, load_ckpt):
+    #TODO setup an archive folder for all runs with the folders as timestamps of when the run began
+    # -> this won't depend on the 'run_number', and is a good way to make sure data isn't being overwritten
+    if load_ckpt == 0:
+        step_list = []
+        reward_list = []
+        loss_list = []
+        epsilon_list = []
+
+    else:
+        data_path = os.path.join(ckpt_dir, 'episode_data.txt')
+        with open(data_path, 'r') as f:
+            data = np.loadtxt(f)
+        
+        step_list = np.ndarray.tolist(data[0, 0:load_ckpt])
+        reward_list = np.ndarray.tolist(data[1, 0:load_ckpt])
+        
+        #TODO get rid of this garbage for future runs
+        loss_list = np.ndarray.tolist(np.zeros([1, load_ckpt]))
+        epsilon_list = np.ndarray.tolist(np.zeros([1, load_ckpt]))
+
+        #TODO uncomment for future runs where these things are being saved
+        # loss_list = np.ndarray.tolist(data[2, :])
+        # epsilon_list = np.ndarray.tolist(data[3, :])
+
+    return step_list, reward_list, loss_list, epsilon_list
+
+######################
+# RL functions
 def gen_action(state, epsilon):
     '''
     TODO: make it work for multiple agents
@@ -213,12 +263,12 @@ def train_online_network(batch_size):
     return loss.item()
 
 def play_episode():
-    global frame_count, first
+    global frame_count
 
     # this gives the partially observable state
     # state = env.reset(map_size = map_size, policy_red = policy_red)
     env.reset(map_size = map_size, policy_red = policy_red)
-    
+
     episode_length = 0.
     episode_loss = 0.
     done = 0
@@ -228,6 +278,7 @@ def play_episode():
         epsilon = epsilon_by_frame(frame_count)
         
         state = env.get_full_state
+        #TODO get centering working!!!
         action = gen_action(state, epsilon)
         next_state, reward, done, _ = env.step(entities_action = [action])
         episode_length += 1
@@ -243,10 +294,7 @@ def play_episode():
 
         # train the network
         if len(replay_buffer) > replay_buffer_init:
-            if first:
-                print('Start Training')
-                first = 0
-            if (frame_count % train_frame) == 0:
+            if (frame_count % train_online_network_frame) == 0:
                 loss = train_online_network(batch_size)
                 episode_loss += loss
 
@@ -258,38 +306,32 @@ def play_episode():
 # make environment
 env_id = 'cap-v0'
 env = gym.make(env_id)
-map_size = 10
+map_size = 5
 blue_team_agent_list = env.get_team_blue
 policy_red = policy.random_actions.PolicyGen(env.get_map, env.get_team_red)
 env.reset(map_size = map_size, policy_red = policy_red)
 
 # set hyperparameters
-#TODO decaying exploration rate 
-# ideas
-# decay epsilon if the episode was successful
-# decay over the frames or episodes
-# use a smarter way to decay (entropy or something like that)
+# exploration rate (decays based on number of frames that have passed)
+#TODO have exploration based on number of successful episodes?
 epsilon_start = 1.0
 epsilon_final = 0.02
-epsilon_decay = 200000
+epsilon_decay = 10000
 
 gamma = 0.99 # future reward discount
 
 num_episodes = 200000
-max_episode_length = 50
+max_episode_length = 100
 learning_rate = 0.01
 
 batch_size = 100 # number of transitions to sample from replay buffer
-replay_buffer_capacity = 100000
+replay_buffer_capacity = 1000
 replay_buffer_init = 20000 # number of frames to simulate before we start sampling from the buffer
 train_online_network_frame = 4 # number of frames between training of the online network (see Hasselt 2016 - DDQN)
 replay_buffer = ReplayBuffer(replay_buffer_capacity)
 
 # storage for plots
-step_list = []
-reward_list = []
-loss_list = []
-epsilon_list = []
+step_list, reward_list, loss_list, epsilon_list = setup_storage(run_number, load_ckpt)
 
 # get fully observable state
 obs_space = env.get_full_state
@@ -300,41 +342,26 @@ num_actions = env.action_space.n
 # setup neural net q-function approximator
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(device)
-train_frame = 4 # train online network every train_frame frames 
-online_model = myDQN(num_states, num_actions)
-online_model.to(device)
+online_model = load_model(run_number, load_ckpt)
 criterion = nn.MSELoss()
 optimizer = optim.Adam(online_model.parameters(), lr=learning_rate)
 
-# set checkpoint save directory
-# ckpt_dir = './algorithms/cap-v0/checkpoints'
-ckpt_dir = './checkpoints_' + str(run_number)
-
-dir_exist = os.path.exists(ckpt_dir)
-if not dir_exist:
-    os.mkdir(ckpt_dir)
-
+######################
 if __name__ == '__main__':
-    time1 = time.time()
-    frame_count = 0
-    for episode in range(num_episodes):
+    time1 = time.time()    
+    for episode in range(load_ckpt, load_ckpt+num_episodes):
         loss, length, reward, epsilon = play_episode()
         
         # save episode data after the episode is done
-        loss_list.append(loss / length)
         step_list.append(length)
+        loss_list.append(loss / length)
         reward_list.append(reward)
         epsilon_list.append(epsilon)
 
         if episode % 500 == 0:
             print('Run: {} ---- Episode: {}/{} ({}) ---- Runtime: {} '.format(run_number, episode, num_episodes, round(float(episode) / float(num_episodes), 3), round(time.time()-time1, 3)))
 
-        if episode % 1000 == 0 and episode != 0:
+        if episode % 2000 == 0 and episode != 0:
             save_model(episode)
-            save_data(step_list, reward_list)
-
-save_data(step_list, reward_list)
-save_model(episode = 'final')
-
-# print('\nSuccessful episodes: {}'.format(np.sum(np.array(reward_list)>0.0)/num_episodes))
+            save_data(step_list, reward_list, loss_list, epsilon_list)
 

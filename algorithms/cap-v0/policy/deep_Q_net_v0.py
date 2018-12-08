@@ -75,7 +75,7 @@ class PolicyGen:
         # send to GPU if available, otherwise keep on CPU
         #TODO do this init in the training file, not here!
         self.current_model = self.current_model.to(self.device)
-        self.target_model = self.target_model.to(self.device)
+        self.target_model = self.targ   et_model.to(self.device)
         self.replay_buffer = ReplayBuffer(hyperparam_dict["replay_buffer_size"])
 
         self.optimizer = optim.Adam(self.current_model.parameters())
