@@ -1,19 +1,18 @@
 ######################
 ## program controls
-load_datetime = '2018-12-24--185256.843035'
+load_ckpt_dir = '2018-12-24--185256.843035'
 load_episode = '38000'
-eval_episodes = 2000 # choose nice even numbers please
+eval_episodes = 2000 # choose nice, even numbers please
 window = int(eval_episodes / 25)
 
 # renders only for recorded episodes (50 videos is around 2 minutes of footage)
 record_video = 0
-num_videos = 20
+num_videos = 0
 
-# renders at every timestep
+# renders at every stimestep
 render_model = 0 
 
 #TODO record agent actions and q-values during evaluation
-
 #TODO visualize actions at each timestep and the associated q-values (https://www.youtube.com/watch?v=XjsY8-P4WHM)
 
 ######################
@@ -81,9 +80,10 @@ def save_data(episode, step_list, reward_list, loss_list, epsilon_list):
     plt.figure(figsize = [10,8])
     plt.subplot(211)
     plt.plot(pd.Series(step_list).rolling(window).mean(), label = 'Length (frames)')
-    plt.plot(step_list_avg, label = 'Mean Length = {}'.format(round(step_avg, 1)), linewidth = .7)
+    plt.plot(step_list_avg, label = 'Mean Episode Length = {}'.format(round(step_avg, 1)), linewidth = .7)
     plt.title('Frames per Episode (Moving Average {}-episode Window)'.format(window))
     plt.ylabel('Frames')
+    plt.xlabel('Episode')
     plt.legend(loc = 'upper right')
 
     plt.subplot(212)
@@ -91,10 +91,17 @@ def save_data(episode, step_list, reward_list, loss_list, epsilon_list):
     plt.plot(reward_list_avg, label = 'Mean Reward = {}'.format(round(reward_avg, 1)), linewidth = .7)
     plt.title('Reward per Episode (Moving Average, {}-episode Window)'.format(window))
     plt.ylabel('Reward')
-    bold_str = 'Succesful Eval. Episodes: {}/{} ({}%)'.format(num_success, eval_episodes, percent_success)
-    #TODO generalize network name to other network architectures
-    text = bold_str + '\nTraining Episodes: {}\nMap Size: {}\nMax # Frames per Episode: {}\nVision Radius: {}\nNetwork: DQN'.format(load_episode,train_params['map_size'], train_params['max_episode_length'], train_params['vision_radius'])
     
+    
+    success_str = 'Succesful Eval. Episodes: {}/{} ({}%)\n'.format(num_success, eval_episodes, percent_success)
+
+    training_string = 'Network: DQN\nTraining Episodes: {}\n--------------------------------------------------\n'.format(load_episode)
+
+    num_UGV_red, num_UAV_red = count_team_units(env.get_team_red)
+    num_UGV_blue, num_UAV_blue = count_team_units(env.get_team_blue)
+    env_param_string = 'Map Size: {}\nMax # Frames per Episode: {}\nVision Radius: {}\n# Blue UGVs: {}\n# Blue UAVs: {}\n# Red UGVs: {}\n# Red UAVs: {}'.format(train_params['map_size'], train_params['max_episode_length'], train_params['vision_radius'], num_UGV_blue, num_UAV_blue,num_UGV_red, num_UAV_red)
+
+    text = success_str + training_string + env_param_string
     bbox_props = dict(boxstyle='square', fc = 'white')
     plt.xlabel(text, bbox = bbox_props)
     plt.tight_layout(pad=0.4, w_pad=0.5, h_pad=1.0)
@@ -125,7 +132,7 @@ def setup_data_storage(load_episode):
     - init lists for saving training data to disk
     '''
     # set checkpoint save directory
-    ckpt_dir = './data/' + load_datetime
+    ckpt_dir = './data/' + load_ckpt_dir
     
     eval_dir = os.path.join(ckpt_dir, 'eval')
     dir_exist = os.path.exists(eval_dir)
@@ -138,6 +145,8 @@ def setup_data_storage(load_episode):
         os.mkdir(data_dir)
 
     # setup hyperparameters
+    #TODO right now, this will load the map parameters used during training, 
+    # if you want to evaluate on a different sized map, change it here
     fn = 'train_params.json'
     fp = os.path.join(ckpt_dir, fn)
     with open(fp, 'r') as f:
@@ -156,6 +165,27 @@ def setup_data_storage(load_episode):
 
 ######################
 # RL functions
+
+def count_team_units(team_list):
+    '''
+    Inputs{
+        team_list - use env.get_team_(red or blue) as input
+        }
+    Outputs{
+        num_UGV, num_UAV
+    }
+    '''
+    num_UAV = 0
+    num_UGV = 0
+    for i in range(len(team_list)):
+        if isinstance(team_list[i], gym_cap.envs.agent.GroundVehicle):
+            num_UGV += 1
+        elif isinstance(team_list[i], gym_cap.envs.agent.AerialVehicle):
+            num_UAV += 1
+        else:
+            continue
+    return num_UGV, num_UAV
+
 def gen_action(state, epsilon):
     #TODO: make it work for multiple agents
     if np.random.rand(1) < epsilon:

@@ -24,7 +24,7 @@ def one_hot_encoder(state, agents, vision_radius=9, reverse=False):
 
     :param state: CtF state in raw format
     :param agents: Agent list of CtF environment
-    :param vision_radius: Size of the vision range (default=9)`
+    :param vision_radius: Size of the vision range (default=9)
     :param reverse:Reverse the color. Used for red-perspective (default=False)
 
     :return oh_state: One-hot encoded state
