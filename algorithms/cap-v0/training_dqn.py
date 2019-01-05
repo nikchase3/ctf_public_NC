@@ -2,8 +2,6 @@
 ## program controls
 load_datetime = ''
 load_episode = 0
-#TODO all map_x and map_y may need to be swapped (see conv2d, conv3d documentation https://pytorch.org/docs/stable/nn.html)
-#TODO handle the case of only 1 agent
 
 def setup_hyperparameters():
     train_params = {}
@@ -15,19 +13,17 @@ def setup_hyperparameters():
 
     ## training hyperparameters
     #TODO have exploration based on number of successful episodes?
-    #TODO change back when multi-agent training works
-    # train_params['epsilon_start'] = 1.0
-    train_params['epsilon_start'] = 0.03
+    train_params['epsilon_start'] = 1.0
     train_params['epsilon_final'] = 0.02
     train_params['epsilon_decay'] = 10000
     train_params['gamma'] = 0.99 # future reward discount
     train_params['learning_rate'] = 10**-4
-    train_params['batch_size'] = 100 # number of transitions to sample from replay buffer
+    train_params['batch_size'] = 50 # number of transitions to sample from replay buffer
     
     #TODO change back when multi-agent training works
     train_params['replay_buffer_capacity'] = 2000
-    train_params['replay_buffer_init'] = 101 # number of frames to simulate before we start sampling from the buffer
-    train_params['train_online_model_frame'] = 4 # number of frames between training the online network (see Hasselt 2016 - DDQN)
+    train_params['replay_buffer_init'] = 100 # number of frames to simulate before we start sampling from the buffer
+    train_params['train_online_model_frame'] = 4 # number of frames between training the online network
     
     return train_params
 
@@ -140,7 +136,7 @@ def save_data(episode, step_list, reward_list, loss_list, epsilon_list):
     fp = os.path.join(ckpt_dir, fn)
     plt.savefig(fp, dpi=300)
     plt.close()
-    
+
 def load_model(load_episode):
     if (load_datetime == ''):
         #TODO make this generalize to multiple network architectures, save network type in train_params
@@ -399,7 +395,6 @@ env.reset(map_size = train_params['map_size'], policy_red = policy_red)
 replay_buffer = ReplayBuffer(train_params['replay_buffer_capacity'])
 
 # get fully observable state
-obs_space = env.get_full_state
 num_states = train_params['map_size']**2
 action_space = [0, 1, 2, 3, 4]
 num_actions = len(action_space)

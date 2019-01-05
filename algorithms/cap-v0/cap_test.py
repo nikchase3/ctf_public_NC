@@ -43,7 +43,7 @@ while True:
 
         # render and sleep are not needed for score analysis
         env.render()
-        time.sleep(.05)
+        time.sleep(.1)
 
         t += 1
         if t == 100:

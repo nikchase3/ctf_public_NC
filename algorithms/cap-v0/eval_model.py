@@ -1,19 +1,26 @@
 ######################
 ## program controls
-load_ckpt_dir = '2018-12-24--185256.843035'
-load_episode = '38000'
+load_ckpt_dir = 'b4_r0--2019-01-03--172008.722935'
+load_episode = '20000'
+
+# record_video = 0: eval over eval_episodes 
+# record_video = 1: record a number of episodes (renders for each episode, so takes a long time!)
+# plays a small amount of games until 
+record_video = 0
+
+# this part only applicable if record_video = 0
 eval_episodes = 2000 # choose nice, even numbers please
 window = int(eval_episodes / 25)
 
-# renders only for recorded episodes (50 videos is around 2 minutes of footage)
-record_video = 0
-num_videos = 0
+# this part only applicable if record_video = 1
+# set the number of videos for successful and failed runs that we want to record
+num_success = 20
+num_failure = 8 # failed episodes tend to be much longer than successful ones
 
-# renders at every stimestep
-render_model = 0 
 
 #TODO record agent actions and q-values during evaluation
 #TODO visualize actions at each timestep and the associated q-values (https://www.youtube.com/watch?v=XjsY8-P4WHM)
+#TODO put a frame counter and episode number as part of the legend on each game
 
 ######################
 ## regular imports
@@ -69,8 +76,8 @@ def save_data(episode, step_list, reward_list, loss_list, epsilon_list):
     step_list_avg = step_avg*np.ones(np.shape(step_list))
     reward_avg = np.mean(reward_list)
     reward_list_avg = reward_avg*np.ones(np.shape(reward_list))
-    num_success = np.count_nonzero(reward_list == 100)
-    percent_success = round((num_success / eval_episodes)*100, 3)
+    success = np.count_nonzero(reward_list == 100)
+    percent_success = round((success / eval_episodes)*100, 3)
 
     fn = 'episode_data.txt'
     fp = os.path.join(data_dir, fn)
@@ -93,7 +100,7 @@ def save_data(episode, step_list, reward_list, loss_list, epsilon_list):
     plt.ylabel('Reward')
     
     
-    success_str = 'Succesful Eval. Episodes: {}/{} ({}%)\n'.format(num_success, eval_episodes, percent_success)
+    success_str = 'Succesful Eval. Episodes: {}/{} ({}%)\n'.format(success, eval_episodes, percent_success)
 
     training_string = 'Network: DQN\nTraining Episodes: {}\n--------------------------------------------------\n'.format(load_episode)
 
@@ -145,7 +152,7 @@ def setup_data_storage(load_episode):
         os.mkdir(data_dir)
 
     # setup hyperparameters
-    #TODO right now, this will load the map parameters used during training, 
+    #TODO right now, this will load the map parameters used during training 
     # if you want to evaluate on a different sized map, change it here
     fn = 'train_params.json'
     fp = os.path.join(ckpt_dir, fn)
@@ -186,23 +193,55 @@ def count_team_units(team_list):
             continue
     return num_UGV, num_UAV
 
-def gen_action(state, epsilon):
-    #TODO: make it work for multiple agents
+def format_state_for_action(state):
+    '''
+    Inputs{
+        state: np array with shape (num_agents, map_x, map_y, num_channels)
+    }
+    Outputs{
+        s: torch tensor with shape (num_agents, num_channels, map_x, map_y)
+    }
+    '''
+
+    s = np.swapaxes(state, 3, 2)
+    s = np.swapaxes(s, 2, 1) 
+       
+    s = torch.from_numpy(s).type(torch.FloatTensor).to(device).unsqueeze(0)
+    
+    return s
+
+def gen_action(state, epsilon, team_list):
+    '''
+    Inputs{
+        state: map of env with shape (num_agents, map_x, map_y, num_channels) (np array)
+        epsilon: Probability of taking a random action (float)
+        team_list: List of agents for a given team.  Use env.get_team_(red or blue) as input. (np array) 
+    }
+    Outputs{
+        action_list: List of actions for each agent to take in the next timestep (list)
+    }
+    '''
+
     if np.random.rand(1) < epsilon:
-        action = env.unwrapped.action_space.sample()
+        action_list = random.choices(action_space, k = num_units)
 
     else:
+        action_list = []
+        state = format_state_for_action(state)
         with torch.no_grad():
-            q_values = online_model.forward(state)
-            _, action = torch.max(q_values, 1)
-            action = action.item()
-
-    return action
+            for i in range(num_units):
+                q_values = online_model.forward(state[:, i, :, :, :])
+                _, action = torch.max(q_values, 1)
+                action_list.append(int(action.data))
+                #TODO for optimized version
+                # action_list = list(action.numpy().astype(int))
+                
+    return action_list
 
 def play_episode():
     global frame_count
 
-    if record_video and (episode % int(eval_episodes/num_videos) == 0):
+    if record_video:
         video_dir = os.path.join(data_dir, 'raw_videos')
     
         dir_exist = os.path.exists(video_dir)
@@ -219,20 +258,21 @@ def play_episode():
     episode_length = 0.
     episode_loss = 0.
     done = 0
-    
-    #TODO simplify by replacing with a for loop
+    success_flag = 1
+
     while (done == 0):
-        if render_model:
-            env.unwrapped.render()
-        
         # set exploration rate for this frame
         epsilon = 0
-        if record_video and (episode % int(eval_episodes/num_videos) == 0):
+        if record_video:
             video_recorder.capture_frame()
 
+        # state consists of the centered observations of each agent
         state = one_hot_encoder(env.unwrapped._env, env.unwrapped.get_team_blue, vision_radius = train_params['vision_radius'])
-        action = gen_action(state, epsilon)
-        next_state, reward, done, _ = env.unwrapped.step(entities_action = [action])
+        
+        # action is a list containing the actions for each agent
+        action = gen_action(state, epsilon, env.get_team_blue)
+       
+        _ , reward, done, _ = env.unwrapped.step(entities_action = action)
         
         episode_length += 1
         frame_count += 1
@@ -240,34 +280,43 @@ def play_episode():
         # stop the episode if it goes too long
         if episode_length >= train_params['max_episode_length']:
             reward = -100.
+            success_flag = 0
             done = True
 
         # end the episode         
         if done:
-            if record_video and (episode % int(eval_episodes/num_videos) == 0):
+            if record_video:
                 video_recorder.close()
                 vid = mp.VideoFileClip(video_path)
-                vid_list.append(vid)
+
+                if (success_flag == 1):
+                    vid_success.append(vid)
+
+                elif (success_flag == 0):
+                    vid_failure.append(vid)
 
             return episode_loss, episode_length, reward, epsilon
     
-######################
-## storage for training data-
-ckpt_dir, data_dir, train_params, frame_count, step_list, reward_list, loss_list, epsilon_list = setup_data_storage(load_episode)
-
 ######################
 ## setup for training
 # init environment
 env_id = 'cap-v0'
 env = gym.make(env_id)
-blue_team_agent_list = env.unwrapped.get_team_blue
+num_UGV_red, num_UAV_red = count_team_units(env.get_team_red)
+num_UGV_blue, num_UAV_blue = count_team_units(env.get_team_blue)
+num_units = num_UGV_blue + num_UAV_blue
+print('Blue UGVs: {}\nBlue UAVs: {}\nRed UGVs: {}\nRed UAVs: {}'.format(num_UGV_blue, num_UAV_blue, num_UGV_red, num_UAV_red))
+
+# storage for training data
+ckpt_dir, data_dir, train_params, frame_count, step_list, reward_list, loss_list, epsilon_list = setup_data_storage(load_episode)
+
 policy_red = policy.random_actions.PolicyGen(env.unwrapped.get_map, env.unwrapped.get_team_red)
 env.reset(map_size = train_params['map_size'], policy_red = policy_red)
 
 # get fully observable state
-obs_space = env.unwrapped.get_full_state
-num_states = np.shape(obs_space)[0] * np.shape(obs_space)[1] 
-num_actions = env.unwrapped.action_space.n
+num_states = train_params['map_size']**2
+action_space = [0, 1, 2, 3, 4]
+num_actions = len(action_space)
 
 # setup neural net
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -276,26 +325,70 @@ online_model = load_model(load_episode)
 
 ######################
 if __name__ == '__main__':
-    vid_list = []
+    vid_success = []
+    vid_failure = []
+
     time1 = time.time()    
-    for episode in range(eval_episodes):
-        loss, length, reward, epsilon = play_episode()
-        
-        # save episode data after the episode is done
-        step_list.append(length)
-        loss_list.append(loss / length)
-        reward_list.append(reward)
-        epsilon_list.append(epsilon)
+    if record_video:
+            episode = 0
+            done_flag = 0
+                
+            while (not done_flag):
+                loss, length, reward, epsilon = play_episode()
+                
+                # save episode data after the episode is done
+                step_list.append(length)
+                loss_list.append(loss / length)
+                reward_list.append(reward)
+                epsilon_list.append(epsilon)
 
-        if episode % (eval_episodes/20) == 0:
-            print('Episode: {}/{} ({}) ---- Runtime: {} '.format(episode, eval_episodes, round(float(episode) / float(eval_episodes), 3), round(time.time()-time1, 3)))
+                print('Success: {}/{} ---- Failure: {}/{} ---- Episode: {} ---- Runtime: {} '.format(len(vid_success), num_success, len(vid_failure), num_failure, episode, round(time.time()-time1, 3)))
+                
+                if (len(vid_success) >= num_success) and (len(vid_failure) >= num_failure):
+                    done_flag = 1
 
-save_data(episode, step_list, reward_list, loss_list, epsilon_list)
+
+                episode += 1
+
+    else:
+        for episode in range(eval_episodes):
+            loss, length, reward, epsilon = play_episode()
+            
+            # save episode data after the episode is done
+            step_list.append(length)
+            loss_list.append(loss / length)
+            reward_list.append(reward)
+            epsilon_list.append(epsilon)
+
+            if episode % (eval_episodes/20) == 0:
+                print('Episode: {}/{} ({}) ---- Runtime: {} '.format(episode, eval_episodes, round(float(episode) / float(eval_episodes), 3), round(time.time()-time1, 3)))
+
+if not record_video:
+    save_data(episode, step_list, reward_list, loss_list, epsilon_list)
+
+env.unwrapped.close()
 
 if record_video:
-    vid_render = mp.concatenate_videoclips(vid_list)
-    vid_render = speedx(vid_render, 0.25)
-    fp_final = os.path.join(data_dir, 'eval.mp4')
-    vid_render.write_videofile(fp_final)
+    if num_success > 0:
+        vid_success = vid_success[0:num_success]
 
-env.close()
+        vid = mp.concatenate_videoclips(vid_success)
+        vid = speedx(vid, 0.1)
+        legend = mp.ImageClip('./images/legend.png', duration = vid.duration)
+        
+        final_vid = mp.clips_array([[legend, vid]])
+        fp = os.path.join(data_dir, 'success.mp4')
+        final_vid.write_videofile(fp)
+
+    if num_failure > 0:
+        vid_failure = vid_failure[0:num_failure]
+        
+        vid = mp.concatenate_videoclips(vid_failure)
+        vid = speedx(vid, 0.25)
+        legend = mp.ImageClip('./images/legend.png', duration = vid.duration)
+        
+        final_vid = mp.clips_array([[legend, vid]])
+        fp = os.path.join(data_dir, 'failure.mp4')
+        final_vid.write_videofile(fp)
+
+
