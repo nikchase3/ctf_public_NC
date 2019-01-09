@@ -4,12 +4,26 @@ load_datetime = ''
 load_episode = 0
 
 def setup_hyperparameters():
+    '''
+    Init all relevant training and evaluation hyperparameters.
+
+    Returns:
+        train_params (dict): contains all the training hyperparameters
+    '''
+
     train_params = {}
     ## game hyperparameters
-    train_params['num_episodes'] = 40000
-    train_params['map_size'] = 10
+    train_params['num_episodes'] = 20000
     train_params['vision_radius'] = 10
-    train_params['max_episode_length'] = 100
+
+    train_params['map_size'] = 5
+    train_params['max_episode_length'] = 15
+
+    # train_params['map_size'] = 10
+    # train_params['max_episode_length'] = 100
+
+    # train_params['map_size'] = 20
+    # train_params['max_episode_length'] = 200
 
     ## training hyperparameters
     #TODO have exploration based on number of successful episodes?
@@ -19,12 +33,11 @@ def setup_hyperparameters():
     train_params['gamma'] = 0.99 # future reward discount
     train_params['learning_rate'] = 10**-4
     train_params['batch_size'] = 50 # number of transitions to sample from replay buffer
-    
-    #TODO change back when multi-agent training works
+
     train_params['replay_buffer_capacity'] = 2000
     train_params['replay_buffer_init'] = 100 # number of frames to simulate before we start sampling from the buffer
     train_params['train_online_model_frame'] = 4 # number of frames between training the online network
-    
+
     return train_params
 
 ######################
@@ -63,18 +76,15 @@ from utility.utilityRL import DQN, ReplayBuffer
 # file / data management
 def save_data(episode, step_list, reward_list, loss_list, epsilon_list):
     '''
-    Inputs{
-        episode: current episode
-        step_list
-    } 
-
-    Actions{
-    - save model weights
-    - save hyperparameters
-    - save training data
-    - make a plot
-    }
+    Saves model weights, hyperparameters, episode data, and makes a plot for visualizing training.
+    Args:
+        episode (int): Current episode
+        step_list (list): Contains the length of each episode in frames
+        reward_list (list): Contains the reward for each episode
+        loss_list (list): Contains the loss for each episode
+        epsilon_list (list): Contains the exploration rate for each episode
     '''
+
     # save weights
     fn = 'episode_' + str(episode) + '.model'
     fp = os.path.join(ckpt_dir, fn)
@@ -91,11 +101,11 @@ def save_data(episode, step_list, reward_list, loss_list, epsilon_list):
     # save training data
     step_list = np.asarray(step_list)
     reward_list = np.asarray(reward_list)
-    loss_list = np.asarray(loss_list) 
+    loss_list = np.asarray(loss_list)
     epsilon_list = np.asarray(epsilon_list)
     episode_save = np.vstack((step_list, reward_list, loss_list, epsilon_list))
-    
-    # get averages 
+
+    # get averages
     step_avg = np.mean(step_list)
     step_list_avg = step_avg*np.ones(np.shape(step_list))
     reward_avg = np.mean(reward_list)
@@ -125,7 +135,7 @@ def save_data(episode, step_list, reward_list, loss_list, epsilon_list):
 
     num_UGV_red, num_UAV_red = count_team_units(env.get_team_red)
     num_UGV_blue, num_UAV_blue = count_team_units(env.get_team_blue)
-    
+
     text = 'Map Size: {}\nMax # Frames per Episode: {}\nVision Radius: {}\n# Blue UGVs: {}\n# Blue UAVs: {}\n# Red UGVs: {}\n# Red UAVs: {}'.format(train_params['map_size'], train_params['max_episode_length'], train_params['vision_radius'], num_UGV_blue, num_UAV_blue,num_UGV_red, num_UAV_red)
 
     bbox_props = dict(boxstyle='square', fc = 'white')
@@ -138,15 +148,25 @@ def save_data(episode, step_list, reward_list, loss_list, epsilon_list):
     plt.close()
 
 def load_model(load_episode):
+    '''
+    Loads a model to continue training, or loads a new model for a new training run.
+
+    Args:
+        load_episode (int): Saved training episode for continuing a training run
+
+    Returns:
+        online_model (pytorch model): loaded model from the training episode
+    '''
+
     if (load_datetime == ''):
         #TODO make this generalize to multiple network architectures, save network type in train_params
         online_model = DQN(num_states, num_actions, train_params['batch_size'])
         online_model = online_model.to(device)
-  
+
     else:
         #TODO make this generalize to multiple network architectures
         online_model = DQN(num_states, num_actions, train_params['batch_size'])
-        
+
         # load only the state dict
         fn = 'episode_' + str(load_episode) + '.model'
         fp = os.path.join(ckpt_dir, fn)
@@ -157,28 +177,39 @@ def load_model(load_episode):
 
 def setup_data_storage(load_episode):
     '''
-    - init ckpt_dir for saving data
-    - init train_params
-    - init frame_count
-    - init lists for saving training data to disk
+    Inits directories and training data lists to be used during evaluation.
+
+    Args:
+        load_episode (int): Saved training episode to be evaluated
+
+    Returns:
+        ckpt_dir (str): directory for saving training data
+        train_params (dict): dict of hyperparameters used during training and evaluation
+        frame_count (list): number of frames that have passed
+        step_list (list): Contains the length of each episode in frames
+        reward_list (list): Contains the reward for each episode
+        loss_list (list): Contains the loss for each episode
+        epsilon_list (list): Contains the exploration rate for each episode
     '''
-    
+
     if (load_datetime == ''):
+        # setup hyperparameters
+        train_params = setup_hyperparameters()
+
         # set checkpoint save directory
         time = datetime.datetime.now()
-        
+
         num_blue_UGV, _ = count_team_units(env.get_team_blue)
         num_red_UGV, _ = count_team_units(env.get_team_red)
-        map_params_str = 'b' + str(num_blue_UGV) + '_r' + str(num_red_UGV) + '--'
+        map_size = train_params['map_size']
+        step = train_params['max_episode_length']
+        map_params_str = 'b' + str(num_blue_UGV) + '_r' + str(num_red_UGV) + '_m' + str(map_size) + '_s' + str(step) + '--'
         time_str = str(time).replace(' ', '--').replace(':', '')
-        
+
         ckpt_dir = './data/' + map_params_str + time_str
         dir_exist = os.path.exists(ckpt_dir)
         if not dir_exist:
             os.mkdir(ckpt_dir)
-        
-        # setup hyperparameters
-        train_params = setup_hyperparameters()
 
         # init frame count
         frame_count = 0
@@ -188,7 +219,7 @@ def setup_data_storage(load_episode):
         reward_list = []
         loss_list = []
         epsilon_list = []
-        
+
     else:
         # set checkpoint save directory
         ckpt_dir = './data/' + load_datetime
@@ -198,15 +229,15 @@ def setup_data_storage(load_episode):
         fp = os.path.join(ckpt_dir, fn)
         with open(fp, 'r') as f:
             train_params = json.load(f)
-        
+
         train_params['num_episodes'] = num_episodes
-        
+
         # init lists for training data
         fn = 'episode_data.txt'
         fp = os.path.join(ckpt_dir, fn)
         with open(fp, 'r') as f:
             data = np.loadtxt(f)
-        
+
         step_list = np.ndarray.tolist(data[0, 0:load_episode])
         reward_list = np.ndarray.tolist(data[1, 0:load_episode])
         loss_list = np.ndarray.tolist(data[2, 0:load_episode])
@@ -214,7 +245,7 @@ def setup_data_storage(load_episode):
 
         # init frame_count
         #TODO make sure step_list is correct, and make sure this is right too!
-        frame_count = np.sum(step_list) 
+        frame_count = np.sum(step_list)
 
     return ckpt_dir, train_params, frame_count, step_list, reward_list, loss_list, epsilon_list
 
@@ -226,13 +257,14 @@ def setup_data_storage(load_episode):
 
 def count_team_units(team_list):
     '''
-    Inputs{
-        team_list: list of agents for a team.  Use env.get_team_(red or blue) as input
-        }
-    Outputs{
-        num_UGV: number of ground vehicles for a given team
-        num_UAV: number of aerial vehicles for a given team
-    }
+    Counts total UAVs and UGVs for a team.
+
+    Args:
+        team_list (list): list of team members.  Use env.get_team_(red or blue) as input.
+
+    Returns:
+        num_UGV (int): number of ground vehicles
+        num_UAV (int): number of aerial vehicles
     '''
     num_UAV = 0
     num_UGV = 0
@@ -247,31 +279,33 @@ def count_team_units(team_list):
 
 def format_state_for_action(state):
     '''
-    Inputs{
-        state: np array with shape (num_agents, map_x, map_y, num_channels)
-    }
-    Outputs{
-        s: torch tensor with shape (num_agents, num_channels, map_x, map_y)
-    }
+    Formats the raw input state for generating actions.
+
+    Args:
+        state (numpy array): Has shape (num_agents, map_x, map_y, num_channels)
+
+    Returns:
+        s (torch tensor): Has shape (num_agents, num_channels, map_x, map_y)
     '''
 
     s = np.swapaxes(state, 3, 2)
-    s = np.swapaxes(s, 2, 1) 
-       
+    s = np.swapaxes(s, 2, 1)
+
     s = torch.from_numpy(s).type(torch.FloatTensor).to(device).unsqueeze(0)
-    
+
     return s
 
 def gen_action(state, epsilon, team_list):
     '''
-    Inputs{
-        state: map of env with shape (num_agents, map_x, map_y, num_channels) (np array)
-        epsilon: Probability of taking a random action (float)
-        team_list: List of agents for a given team.  Use env.get_team_(red or blue) as input. (np array) 
-    }
-    Outputs{
-        action_list: List of actions for each agent to take in the next timestep (list)
-    }
+    Generates actions for a single team of agents for a single timestep of the sim.
+
+    Args:
+        state (np array): Raw input state from the CTF env
+        epsilon (float): Probability of taking a random action
+        team_list (list): list of team members.  Use env.get_team_(red or blue) as input.
+
+    Returns:
+        action_list (list): List of actions for each agent to take
     '''
 
     if np.random.rand(1) < epsilon:
@@ -287,52 +321,82 @@ def gen_action(state, epsilon, team_list):
                 action_list.append(int(action.data))
                 #TODO for optimized version
                 # action_list = list(action.numpy().astype(int))
-                
+
     return action_list
 
 def epsilon_by_frame(frame_count):
+    '''
+    Generates random action probability based on the number of total frames that have passed.
+
+    Args:
+        frame_count (int): Number of total simulation frames that have occurred.
+
+    Returns:
+        epsilon_curr (float): Probability of taking a random action.
+    '''
+
     epsilon_curr = train_params['epsilon_final'] + (train_params['epsilon_start'] - train_params['epsilon_final']) * math.exp(-1. * frame_count / train_params['epsilon_decay'])
-    
+
     return epsilon_curr
 
 def train_online_model(batch_size):
+    '''
+    Trains the model based on the Q-Learning algorithm with Experience Replay.
+
+    Args:
+        batch_size (int): Number of transitions to be sampled from the replay buffer.
+
+    Returns:
+        loss (float): loss for the batch of training
+    '''
+
     state, action, reward, next_state, done = replay_buffer.sample(batch_size)
-    
+
     # evaluate for each agent separately
     #TODO optimize so the state only goes through the network 1 time
     for i in range(num_units):
-    
+
         # get all the q-values for actions at state and next state
         q_values = online_model.forward(state[:, i, :, :, :])
         next_q_values = online_model.forward(next_state[:, i, :, :, :])
-        
+
         # find Q(s, a) for the action taken during the sampled transition
         agent_action = action[:, i].unsqueeze(1)
         state_action_value = q_values.gather(1, agent_action).squeeze(1)
-        
+
         # Find Q(s_next, a_next) for an optimal agent (take the action with max q-value in s_next)
         next_state_action_value = next_q_values.max(1)[0]
-        
+
         # if done, multiply next_state_action_value by 0, else multiply by 1
         one = np.ones(batch_size)
         done_mask = np.array(one-done).astype(int)
         done_mask = torch.from_numpy(done_mask).type(torch.FloatTensor)
-        
+
         discounted_next_value = (train_params['gamma'] * next_state_action_value)
         discounted_next_value = discounted_next_value.type(torch.FloatTensor)
-        
+
         # Compute the target of current q-values
         target_value = reward + discounted_next_value * done_mask
 
         loss = criterion(state_action_value, target_value)
-        
+
         online_model.zero_grad()
         loss.backward()
         optimizer.step()
-        
+
     return loss.item()
 
 def play_episode():
+    '''
+    Plays a single episode of the sim
+
+    Returns:
+        episode_loss (float): TODO: how to get a good measure of loss with 4 agents?
+        episode_length (int): number of frames in the episode
+        reward (int): final reward for the blue team
+        epsilon (float): Probability of taking a random action
+    '''
+
     #TODO how to deal with dead agents
     global frame_count
     env.reset(map_size = train_params['map_size'], policy_red = policy_red)
@@ -340,23 +404,23 @@ def play_episode():
     episode_length = 0.
     episode_loss = 0.
     done = 0
-    
+
     while (done == 0):
         # set exploration rate for this frame
         epsilon = epsilon_by_frame(frame_count)
 
         # state consists of the centered observations of each agent
         state = one_hot_encoder(env._env, env.get_team_blue, vision_radius = train_params['vision_radius'])
-        
+
         # action is a list containing the actions for each agent
         action = gen_action(state, epsilon, env.get_team_blue)
-        
+
         _ , reward, done, _ = env.step(entities_action = action)
         reward = reward / 100.
         next_state = one_hot_encoder(env._env, env.get_team_blue, vision_radius = train_params['vision_radius'])
         episode_length += 1
         frame_count += 1
-                
+
         # set Done flag if episode goes for too long without reaching the flag
         if episode_length >= train_params['max_episode_length']:
             reward = -100. / 100.
@@ -371,7 +435,7 @@ def play_episode():
                 loss = train_online_model(train_params['batch_size'])
                 episode_loss += loss
 
-        # end the episode         
+        # end the episode
         if done:
             return episode_loss, episode_length, reward, epsilon
 
@@ -383,10 +447,10 @@ env = gym.make(env_id)
 num_UGV_red, num_UAV_red = count_team_units(env.get_team_red)
 num_UGV_blue, num_UAV_blue = count_team_units(env.get_team_blue)
 num_units = num_UGV_blue + num_UAV_blue
-print('Blue UGVs: {}\nBlue UAVs: {}\nRed UGVs: {}\nRed UAVs: {}'.format(num_UGV_blue, num_UAV_blue, num_UGV_red, num_UAV_red))
 
 # storage for training data
 ckpt_dir, train_params, frame_count, step_list, reward_list, loss_list, epsilon_list = setup_data_storage(load_episode)
+print('Map Size: {}x{}\nMax Frames per Episode: {}\nBlue UGVs: {}\nBlue UAVs: {}\nRed UGVs: {}\nRed UAVs: {}'.format(train_params['map_size'], train_params['map_size'], train_params['max_episode_length'], num_UGV_blue, num_UAV_blue, num_UGV_red, num_UAV_red))
 
 policy_red = policy.random_actions.PolicyGen(env.get_map, env.get_team_red)
 env.reset(map_size = train_params['map_size'], policy_red = policy_red)
@@ -408,10 +472,10 @@ optimizer = optim.Adam(online_model.parameters(), lr = train_params['learning_ra
 
 ######################
 if __name__ == '__main__':
-    time1 = time.time()    
+    time1 = time.time()
     for episode in range(load_episode, load_episode + train_params['num_episodes']+1):
         loss, length, reward, epsilon = play_episode()
-        
+
         # save episode data after the episode is done
         step_list.append(length)
         loss_list.append(loss / length)
@@ -421,5 +485,5 @@ if __name__ == '__main__':
         if episode % 10 == 0:
             print('Episode: {}/{} ({}) ---- Runtime: {} '.format(episode, train_params['num_episodes'], round(float(episode) / float(train_params['num_episodes']), 3), round(time.time()-time1, 3)))
 
-        if episode % 2000 == 0:
+        if episode % 250 == 0:
             save_data(episode, step_list, reward_list, loss_list, epsilon_list)
