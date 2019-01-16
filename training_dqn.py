@@ -1,7 +1,7 @@
 ######################
 ## program controls
-load_dir = 'b1_r0_m5_s15--2019-01-09--142813.023992' # set as empty string if not loading a checkpoint
-load_episode = 20000 # set to 0 if not loading a checkpoint
+load_dir = '' # set as empty string if not loading a checkpoint
+load_episode = 0 # set to 0 if not loading a checkpoint
 
 # training picks up at load_episode and runs until total_episodes
 total_episodes = 24000
@@ -12,6 +12,7 @@ if load_episode > total_episodes:
 
 #TODO when loading an episode to continue trainnig, make sure the hyperparameters are loaded and that they completely
 # ignore the ones in setup_hyperparameters
+
 #TODO training efectiveness evaluation -> to check the effectiveness of different hyperparameters on the same map size, we
 # need to set a 'finish line'.  This would require running evaluations after certain training episodes, whcih would be computationally expensive
 # EX: the model reaches the 'finish line' when it reaches 60% wins on evaluation

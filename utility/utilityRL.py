@@ -48,6 +48,7 @@ class DQN(nn.Module):
         # would also work and could be a cool thing to check out (for 4 agents, and batch size 100, we
         # have 100 'stacked states' going through the network)
 
+        #TODO mess around with different network architectures (RNN, DenseNet, etc.)
         out = self.conv1(state)
         out = self.relu(out)
         out = self.conv2(out)
