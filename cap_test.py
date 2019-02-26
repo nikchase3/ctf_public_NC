@@ -21,6 +21,33 @@ rscore = []
 policy_blue = policy.random_actions.PolicyGen(env.get_map, env.get_team_blue)
 policy_red = policy.stay_still.PolicyGen(env.get_map, env.get_team_red)
 
+def count_team_units(team_list):
+    '''
+    Counts total UAVs and UGVs for a team.
+
+    Args:
+        team_list (list): list of team members.  Use env.get_team_(red or blue) as input.
+
+    Returns:
+        num_UGV (int): number of ground vehicles
+        num_UAV (int): number of aerial vehicles
+    '''
+    num_UAV = 0
+    num_UGV = 0
+    for i in range(len(team_list)):
+        if isinstance(team_list[i], gym_cap.envs.agent.GroundVehicle):
+            num_UGV += 1
+        elif isinstance(team_list[i], gym_cap.envs.agent.AerialVehicle):
+            num_UAV += 1
+        else:
+            continue
+    return num_UGV, num_UAV
+
+num_UGV_red, num_UAV_red = count_team_units(env.get_team_red)
+num_UGV_blue, num_UAV_blue = count_team_units(env.get_team_blue)
+agent_str = 'Blue UGVs: {}\nBlue UAVs: {}\nRed UGVs: {}\nRed UAVs: {}'.format(num_UGV_blue, num_UAV_blue, num_UGV_red, num_UAV_red)
+print(agent_str)
+
 # reset the environment and select the policies for each of the team
 observation = env.reset(map_size=10,
                         policy_blue=policy_blue,

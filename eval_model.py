@@ -9,7 +9,7 @@ load_episode = 17000
 record_video = 0
 
 # this part only applicable if record_video = 0
-eval_episodes = 2000 # choose nice, even numbers please
+eval_episodes = 1000 # choose nice, even numbers please
 window = int(eval_episodes / 25)
 
 # this part only applicable if record_video = 1
@@ -243,7 +243,7 @@ def format_state_for_action(state):
 
     return s
 
-def gen_action(state, epsilon, team_list):
+def get_action(state, epsilon, team_list):
     '''
     Generates actions for a single team of agents for a single timestep of the sim.
 
@@ -314,7 +314,7 @@ def play_episode():
         state = one_hot_encoder(env.unwrapped._env, env.unwrapped.get_team_blue, vision_radius = train_params['vision_radius'])
 
         # action is a list containing the actions for each agent
-        action = gen_action(state, epsilon, env.get_team_blue)
+        action = get_action(state, epsilon, env.get_team_blue)
 
         _ , reward, done, _ = env.unwrapped.step(entities_action = action)
 

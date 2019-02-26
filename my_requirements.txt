@@ -1,0 +1,10 @@
+Hindsight experience replay:
+
+1. the goal (flag) is placed somewhere on the map
+2. our agent goes on a trajectory to find it
+
+3. after the episode ends (doesn't matter if the agent reaches the goal or not), some subset of states that the agent visited are chosen as pseudogoals
+- accomplish this by doing the following:
+    1. get the agent's global state at each time-step of the trajectory (use agent.get_loc())
+    2. generate a new background map with the enemy flag moved to the next state the agent reached (s') when they took action a in state s
+    3. reward the agent appropriately for reaching the flag

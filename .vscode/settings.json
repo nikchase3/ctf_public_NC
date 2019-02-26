@@ -1,2 +1,4 @@
 {
+    "python.pythonPath": "C:\\ProgramData\\Miniconda3\\envs\\research\\python.exe",
+    "python.terminal.activateEnvironment": false
 }

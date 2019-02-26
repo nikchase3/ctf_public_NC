@@ -3,21 +3,13 @@
 load_dir = '' # set as empty string if not loading a checkpoint
 load_episode = 0 # set to 0 if not loading a checkpoint
 
+render = 0
 # training picks up at load_episode and runs until total_episodes
-total_episodes = 24000
+total_episodes = 100000
 
 if load_episode > total_episodes:
     print('Please set load_episode such that load_episode < total_episodes')
     raise ValueError()
-
-#TODO when loading an episode to continue trainnig, make sure the hyperparameters are loaded and that they completely
-# ignore the ones in setup_hyperparameters
-
-#TODO training efectiveness evaluation -> to check the effectiveness of different hyperparameters on the same map size, we
-# need to set a 'finish line'.  This would require running evaluations after certain training episodes, whcih would be computationally expensive
-# EX: the model reaches the 'finish line' when it reaches 60% wins on evaluation
-# EX: the model reaches the 'finish line' when the average number of frames per episode is <20 for BLAH map setup
-
 
 # training hyperparameters
 def setup_hyperparameters():
@@ -31,22 +23,22 @@ def setup_hyperparameters():
     train_params = {}
     ## game hyperparameters
     train_params['num_episodes'] = total_episodes
-    train_params['vision_radius'] = 10
+    # train_params['vision_radius'] = 4
+    train_params['vision_radius'] = 11
 
-    train_params['map_size'] = 5
-    train_params['max_episode_length'] = 15
+    # train_params['map_size'] = 5
+    # train_params['max_episode_length'] = 15
 
     # train_params['map_size'] = 10
     # train_params['max_episode_length'] = 100
 
-    # train_params['map_size'] = 20
-    # train_params['max_episode_length'] = 200
+    train_params['map_size'] = 20
+    train_params['max_episode_length'] = 150
 
     ## training hyperparameters
-    #TODO have exploration based on number of successful episodes?
     train_params['epsilon_start'] = 1.0
     train_params['epsilon_final'] = 0.02
-    train_params['epsilon_decay'] = 10000
+    train_params['epsilon_decay'] = 150*5000 # play 5000 games with a 'high' chance of random action for better exploration
     train_params['gamma'] = 0.99 # future reward discount
     train_params['learning_rate'] = 10**-4
     train_params['batch_size'] = 50 # number of transitions to sample from replay buffer
@@ -65,6 +57,8 @@ import os
 import gym
 import numpy as np
 from numpy import shape
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import pandas as pd
 import math
@@ -177,12 +171,12 @@ def load_model(load_episode):
 
     if (load_dir == ''):
         #TODO make this generalize to multiple network architectures, save network type in train_params
-        online_model = DQN(num_states, num_actions, train_params['batch_size'])
+        online_model = DQN(num_obsv_states, num_actions, train_params['batch_size'])
         online_model = online_model.to(device)
 
     else:
         #TODO make this generalize to multiple network architectures
-        online_model = DQN(num_states, num_actions, train_params['batch_size'])
+        online_model = DQN(num_obsv_states, num_actions, train_params['batch_size'])
 
         # load only the state dict
         fn = 'episode_' + str(load_episode) + '.model'
@@ -261,14 +255,13 @@ def setup_data_storage(load_episode):
         epsilon_list = np.ndarray.tolist(data[3, 0:load_episode])
 
         # init frame_count
-        #TODO make sure step_list is correct, and make sure this is right too!
         frame_count = np.sum(step_list)
 
     return ckpt_dir, train_params, frame_count, step_list, reward_list, loss_list, epsilon_list
 
 ######################
 # RL functions
-#TODO have gen_action, epsilon_by_frame, and train_online_model as functions in the RL algorithm class
+#TODO have get_action, epsilon_by_frame, and train_online_model as functions in the RL algorithm class
 #NOTE this cannot be easily done, for pytorch to save the model, the DQN class can only have init and forward functions
 #TODO workaround: have a separate module for each algorithm
 
@@ -312,7 +305,7 @@ def format_state_for_action(state):
 
     return s
 
-def gen_action(state, epsilon, team_list):
+def get_action(state, epsilon, team_list):
     '''
     Generates actions for a single team of agents for a single timestep of the sim.
 
@@ -414,7 +407,6 @@ def play_episode():
         epsilon (float): Probability of taking a random action
     '''
 
-    #TODO how to deal with dead agents
     global frame_count
     env.reset(map_size = train_params['map_size'], policy_red = policy_red)
 
@@ -423,6 +415,8 @@ def play_episode():
     done = 0
 
     while (done == 0):
+        if render:
+            env.render()
         # set exploration rate for this frame
         epsilon = epsilon_by_frame(frame_count)
 
@@ -430,7 +424,7 @@ def play_episode():
         state = one_hot_encoder(env._env, env.get_team_blue, vision_radius = train_params['vision_radius'])
 
         # action is a list containing the actions for each agent
-        action = gen_action(state, epsilon, env.get_team_blue)
+        action = get_action(state, epsilon, env.get_team_blue)
 
         _ , reward, done, _ = env.step(entities_action = action)
         reward = reward / 100.
@@ -461,6 +455,7 @@ def play_episode():
 # init environment
 env_id = 'cap-v0'
 env = gym.make(env_id)
+
 num_UGV_red, num_UAV_red = count_team_units(env.get_team_red)
 num_UGV_blue, num_UAV_blue = count_team_units(env.get_team_blue)
 num_units = num_UGV_blue + num_UAV_blue
@@ -471,16 +466,19 @@ map_str = 'Map Size: {}x{}\nMax Frames per Episode: {}\n'.format(train_params['m
 agent_str = 'Blue UGVs: {}\nBlue UAVs: {}\nRed UGVs: {}\nRed UAVs: {}'.format(num_UGV_blue, num_UAV_blue, num_UGV_red, num_UAV_red)
 print(map_str + agent_str)
 
-policy_red = policy.random_actions.PolicyGen(env.get_map, env.get_team_red)
+# policy_red = policy.roomba.PolicyGen(env.get_map, env.get_team_red)
+policy_red = policy.stay_still.PolicyGen(env.get_map, env.get_team_red)
+# policy_red = policy.random_actions.PolicyGen(env.get_map, env.get_team_red)
 env.reset(map_size = train_params['map_size'], policy_red = policy_red)
 
 # init replay buffer
 replay_buffer = ReplayBuffer(train_params['replay_buffer_capacity'])
 
 # get fully observable state
-num_states = train_params['map_size']**2
+num_obsv_states = (train_params['vision_radius']*2 + 1)**2
 action_space = [0, 1, 2, 3, 4]
 num_actions = len(action_space)
+
 
 # setup neural net
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

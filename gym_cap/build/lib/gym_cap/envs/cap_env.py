@@ -7,6 +7,7 @@ from gym.utils import seeding
 import numpy as np
 
 from .agent import *
+from .const import *
 from .create_map import CreateMap
 
 """
@@ -31,7 +32,13 @@ class CapEnv(gym.Env):
         self    : object
             CapEnv object
         """
-        self.seed(  )
+        self.num_blue_ugv = NUM_BLUE
+        self.num_blue_uav = NUM_UAV
+        self.num_red_ugv = NUM_RED
+        self.num_red_uav = NUM_UAV
+        self.num_grey = NUM_GRAY
+
+        self.seed()
         self.reset(map_size, mode=mode)
         self.viewer = None
         if STOCH_ATTACK:
@@ -48,10 +55,11 @@ class CapEnv(gym.Env):
 
         """
 
+        map_obj = [self.num_blue_ugv, self.num_blue_uav, self.num_red_ugv, self.num_red_uav, self.num_grey]
         if map_size is None:
-            self._env, self.team_home = CreateMap.gen_map('map', dim=self.map_size[0], rand_zones=STOCH_ZONES)
+            self._env, self.team_home = CreateMap.gen_map('map', dim=self.map_size[0], rand_zones=STOCH_ZONES, np_random=self.np_random, map_obj=map_obj)
         else:
-            self._env, self.team_home = CreateMap.gen_map('map', map_size, rand_zones=STOCH_ZONES)
+            self._env, self.team_home = CreateMap.gen_map('map', map_size, rand_zones=STOCH_ZONES, np_random=self.np_random, map_obj=map_obj)
 
         self.map_size = (len(self._env), len(self._env[0]))
 
@@ -279,7 +287,7 @@ class CapEnv(gym.Env):
                         n_friends += 1
                     elif entity.team == TEAM2_BACKGROUND and self._env[locx][locy] == TEAM2_UGV:
                         n_friends += 1
-        if flag and np.random.rand() > n_friends/(n_friends + n_enemies):
+        if flag and self.np_random.rand() > n_friends/(n_friends + n_enemies):
 
             entity.isAlive = False
             self._env[loc] = DEAD
@@ -300,6 +308,8 @@ class CapEnv(gym.Env):
         """
         Takes one step in the cap the flag game
 
+
+
         :param
             entities_action: contains actions for entity 1-n
             cur_suggestions: suggestions from rl to human
@@ -314,6 +324,7 @@ class CapEnv(gym.Env):
         """
 
         move_list = []
+
         # Get actions from uploaded policies
         try:
             move_list_red = self.policy_red.gen_action(self.team_red,self.observation_space_red,free_map=self.team_home)
@@ -466,6 +477,7 @@ class CapEnv(gym.Env):
     #     if self.viewer is not None:
     #         self.viewer.close()
     #         self.viewer = None
+
 
 # Different environment sizes and modes
 # Random modes
