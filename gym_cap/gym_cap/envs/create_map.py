@@ -1,5 +1,7 @@
 import numpy as np
+from noise import SimplexNoise
 from .const import *
+from .continuous import Continuous
 
 class CreateMap:
     """This class generates a random map
@@ -31,10 +33,16 @@ class CreateMap:
             4   : gray units
         """
 
+        #TODO: How to use existing grid (if it is to be used at all). Probably using it to retain closest cell value
+        #and which areas are each teams'.
+
         # init the seed and set new_map to zeros
         if not in_seed == None:
             np.random.seed(in_seed)
         new_map = np.zeros([dim, dim], dtype=int)
+
+        # Create a SimpleNoise object for terrain generation.
+        continousTerrain = Continuous(dim, dim, None, in_seed, None, None)
 
         # zones init
         new_map[:,:] = TEAM2_BACKGROUND
