@@ -1,1 +1,0 @@
-{"num_episodes": 40000, "map_size": 20, "vision_radius": 10, "max_episode_length": 150, "epsilon_start": 1.0, "epsilon_final": 0.02, "epsilon_decay": 20000, "gamma": 0.99, "learning_rate": 0.0001, "batch_size": 100, "replay_buffer_capacity": 2000, "replay_buffer_init": 1000, "train_online_model_frame": 4}

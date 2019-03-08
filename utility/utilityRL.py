@@ -4,30 +4,38 @@ import torch.optim as optim
 import numpy as np
 from collections import deque
 import random
+###############################
+## other functions
+def cnn_output_size(w, k, p, s):
+    return ((w-k+2*p)/s)+1
 
 ###############################
 ## network architectures
 class DQN(nn.Module):
-    def __init__(self, num_states, num_actions, batch_size):
+    def __init__(self, num_obsv_states, num_actions, batch_size):
         '''
         Pytorch neural network class for value-function approximation in the CTF environment
 
         Args:
-            num_states (int): number of states in the state space
             num_actions (int): number of actions each agent can take (for CTF, this is 5 (stay still, up, down, left, right))
             batch_size (int): Number of transitions to be sampled from the replay buffer.
         '''
 
         super(DQN, self).__init__()
         self.batch_size = batch_size
-        # this CNN architecture will maintain the size of the input throughout the convolutions
-        #TODO add more channels may help training
-        self.conv1 = nn.Conv2d(6, 6, 3, padding = 1)
-        self.conv2 = nn.Conv2d(6, 6, 3, padding = 1)
-        self.conv3 = nn.Conv2d(6, 6, 3, padding = 1)
+
+        # set number of channels for the CNN
+        self.c1 = 6
+        self.c2 = 16
+        self.c3 = 32
+
+        # this CNN architecture will maintain the size of the observation throughout the convolution
+
+        self.conv1 = nn.Conv2d(6, self.c1, 3, padding = 1)
+        self.conv2 = nn.Conv2d(self.c1, self.c2, 3, padding = 1)
+        self.conv3 = nn.Conv2d(self.c2, self.c3, 3, padding = 1)
         self.relu = nn.ReLU(inplace=True)
-        #TODO figure out a better way to get this dimension number
-        self.fc = nn.Linear(2646, num_actions)
+        self.fc = nn.Linear(self.c3*num_obsv_states, num_actions)
 
     def forward(self, state):
         '''
@@ -40,7 +48,7 @@ class DQN(nn.Module):
             q_values (torch tensor): Q-values for the actions corresponding to the input state
         '''
 
-        # TODO make it work for bool array (or convert bool to int / float)
+        # TODO make it work for bool array for one_hot_encoder_v2 (or convert bool to int / float)
         # TODO for easier implementation, I have taken each observation on it's own (for 4 agents, and batch size 100, we
         # have 400 'states' going through the network)
         #
@@ -55,6 +63,7 @@ class DQN(nn.Module):
         out = self.relu(out)
         out = self.conv3(out)
         out = self.relu(out)
+
         #TODO to optimize and allow all observations to be passed through the network at once, split into 4 vectors here?
         out = out.view(out.size(0), -1)
 

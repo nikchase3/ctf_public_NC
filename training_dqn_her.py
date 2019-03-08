@@ -57,6 +57,7 @@ import os
 import gym
 import numpy as np
 from numpy import shape
+np.set_printoptions(threshold=1000)
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -419,16 +420,20 @@ def play_episode():
             env.render()
         # set exploration rate for this frame
         epsilon = epsilon_by_frame(frame_count)
-
+        env.render()
         # state consists of the centered observations of each agent
         state = one_hot_encoder(env._env, env.get_team_blue, vision_radius = train_params['vision_radius'])
+        # TODO append global position to the state
 
         # action is a list containing the actions for each agent
         action = get_action(state, epsilon, env.get_team_blue)
 
         _ , reward, done, _ = env.step(entities_action = action)
         reward = reward / 100.
+
         next_state = one_hot_encoder(env._env, env.get_team_blue, vision_radius = train_params['vision_radius'])
+        #TODO append global position to the state
+
         episode_length += 1
         frame_count += 1
 
