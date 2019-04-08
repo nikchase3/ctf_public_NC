@@ -48,7 +48,7 @@ class PolicyGen:
         x,y = agent.get_loc()
         #hug wall
         if half:
-            #finds wall
+
 
         else:
 
