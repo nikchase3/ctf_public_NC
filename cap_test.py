@@ -12,6 +12,7 @@ import policy.defense
 import policy.attack
 import policy.stay_still
 import policy.roomba
+import policy.wall_hug
 
 start_time = time.time()
 env = gym.make("cap-v0") # initialize the environment
@@ -20,7 +21,7 @@ done = False
 t = 0
 rscore = []
 
-policy_blue = policy.attack.PolicyGen(env.get_map, env.get_team_blue)
+policy_blue = policy.wall_hug.PolicyGen(env.get_map, env.get_team_blue)
 policy_red = policy.stay_still.PolicyGen(env.get_map, env.get_team_red)
 
 def count_team_units(team_list):
@@ -75,7 +76,7 @@ while True:
         time.sleep(.1)
 
         t += 1
-        if t == 100:
+        if t == 1000:
             break
 
     env.reset()

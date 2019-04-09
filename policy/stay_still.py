@@ -41,7 +41,6 @@ class PolicyGen:
             action_out (list): list of integers as actions selected for team.
         """
         action_out = []
-        
         for i in agent_list:
             action_out.append(0)
         return action_out
