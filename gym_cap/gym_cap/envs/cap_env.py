@@ -19,7 +19,8 @@ class CapEnv(gym.Env):
         'video.frames_per_second' : 50
     }
 
-    #Changed action subtypes.
+    #Possible bugs: What is agent inits insize a solid tile.
+
     #TODO: Add velocity / momentum retention.
     self.ACTION_DIRECTION = (-MAX_ANGLE, MAX_ANGLE)
     self.ACTION_MAGNITUDE = (MIN_MAGNITUDE, MAX_MAGNITUDE)
@@ -166,7 +167,7 @@ class CapEnv(gym.Env):
     #TODO: Integreate.
     def create_observation_space(self):
         """
-        Creates the observation space in self.observation_space. Also creates a discreteised observation space.
+        Creates the observation space in self.observation_space.
 
         Parameters
         ----------
@@ -178,33 +179,42 @@ class CapEnv(gym.Env):
 
         # TODO: Edit for large discreteised environemnt.
 
-        self.observation_space_blue = np.full_like(self._env, -1)
-        for agent in self.team_blue:
-            if not agent.isAlive:
-                continue
-            loc = agent.get_loc()
-            for i in range(-agent.range, agent.range + 1):
-                for j in range(-agent.range, agent.range + 1):
-                    locx, locy = i + loc[0], j + loc[1]
-                    if (i * i + j * j <= agent.range ** 2) and \
-                            not (locx < 0 or locx > self.map_size[0] - 1) and \
-                            not (locy < 0 or locy > self.map_size[1] - 1):
-                        self.observation_space_blue[locx][locy] = self._env[locx][locy]
+        self.full_grid = np.full(self._env.shape * 100, -1)
 
-        self.observation_space_red = np.full_like(self._env, -1)
-        for agent in self.team_red:
-            if not agent.isAlive:
-                continue
-            loc = agent.get_loc()
-            for i in range(-agent.range, agent.range + 1):
-                for j in range(-agent.range, agent.range + 1):
-                    locx, locy = i + loc[0], j + loc[1]
-                    if (i * i + j * j <= agent.range ** 2) and \
-                            not (locx < 0 or locx > self.map_size[0] - 1) and \
-                            not (locy < 0 or locy > self.map_size[1] - 1):
-                        self.observation_space_red[locx][locy] = self._env[locx][locy]
+        for x in range(self._env.shape[0] * 100):
+            for y in range(self._env.shape[1] * 100):
+                self.full_grid[x, y] = self._env[int(x / 100), int(y / 100)]
 
-        self.observation_space_grey = np.full_like(self._env, -1)
+        blue_mask = np.ones(self._env.shape * 100)
+        red_mask = np.ones(self._env.shape * 100)
+
+        blue_mask *= -1
+        red_mask *= -1
+
+        for entity in self.team_blue:
+            for x in range(self._env.shape[0] * 100):
+                for y in range(self._env.shape[1] * 100):
+                    if entity.isAlive:
+                        if in_range(entity.get_loct(), (x, y), entity.size):
+                            self.full_grid[x, y] = entity.full_type
+                        if in_range(entity.get_loct(), (x, y), entity.range):
+                            self.blue_mask[x, y] = 1
+                    else:
+                        if in_range(entity.get_loct(), (x, y), entity.size):
+                            self.full_grid[x, y] = DEAD
+
+        for entity in self.team_red:
+            for x in range(self._env.shape[0] * 100):
+                for y in range(self._env.shape[1] * 100):
+                    if in_range(entity.get_loct(), (x, y), entity.size):
+                        self.full_grid[x, y] = entity.full_type
+                    if in_range(entity.get_loct(), (x, y), entity.range):
+                        self.red_mask[x, y] = 1
+
+        self.observation_space_blue *= blue_mask
+        self.observation_space_red *= red_mask
+
+        self.observation_space_grey = np.full_like(self._env.shape * 100, -1)
 
     @property
     def get_full_state(self):

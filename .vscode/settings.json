@@ -1,4 +1,6 @@
 {
-    "python.pythonPath": "C:\\ProgramData\\Miniconda3\\envs\\research\\python.exe",
-    "python.terminal.activateEnvironment": false
+    "python.pythonPath": "C:\\Users\\Parth\\AppData\\Local\\Programs\\Python\\Python36\\python.exe",
+    "python.terminal.activateEnvironment": false,
+    "python.linting.pylintEnabled": true,
+    "python.linting.enabled": true
 }
