@@ -83,7 +83,13 @@ class Continuous ():
         '''
         TODO: Implement.
         TODO: Add some way to determine step size (how often to check if a point on the walk is untraversable). 
+        TODO: Additional parameters. Agent?
 
         Takes a path of tuples (coordinates) and tries and traverse it. If it every gets stuck (hits a wall or other untraversable terrain)
         it will terminate. Linearizes between points. 
         '''
+
+    def valid ():
+        # returns whether a point is valid for unit placement
+
+    

@@ -10,7 +10,7 @@ class Agent:
     """This is a parent class for all agents.
     It creates an instance of agent in specific location"""
 
-    def __init__(self, loc, map_only, team_number):
+    def __init__(self, loc, loct, map_only, team_number):
         """
         Constructor
 
@@ -23,9 +23,12 @@ class Agent:
         """
         self.isAlive = True
         self.x, self.y = loc
+        self.xt, self.yt = loct #True (float) location.
+        self.heading = #TODO: Each agent retains a heading from 0 to 360 deg.; angles operate as in standard polar coord. system.
         self.step = UGV_STEP
         self.range = UGV_RANGE
         self.a_range = UGV_A_RANGE
+        self.size = UGV_SIZE
         self.air = False
         #self.ai = EnemyAI(map_only)
         self.team = team_number
@@ -226,8 +229,14 @@ class Agent:
     def get_loc(self):
         return self.x, self.y
 
+    def get_loc(self):
+        return self.xt, self.yt
+
     def report_loc(self):
         print("report: position x:%d, y:%d" % (self.x, self.y))
+    
+    def report_loc(self):
+        print("report: position x:%d, y:%d" % (self.xt, self.yt))
 
 
 class GroundVehicle(Agent):
@@ -264,6 +273,7 @@ class AerialVehicle(Agent):
         self.step = UAV_STEP
         self.range = UAV_RANGE
         self.a_range = UAV_A_RANGE
+        self.size = UAV_SIZE
         self.air = True
 
 

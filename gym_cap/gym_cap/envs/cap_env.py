@@ -13,14 +13,16 @@ from .create_map import CreateMap
 Requires that all units initially exist in home zone.
 """
 
-
 class CapEnv(gym.Env):
     metadata = {
         "render.modes": ["fast", "human", 'rgb_array'],
         'video.frames_per_second' : 50
     }
 
-    ACTION = ["X", "N", "E", "S", "W"]
+    #Changed action subtypes.
+    #TODO: Add velocity / momentum retention.
+    self.ACTION_DIRECTION = (-MAX_ANGLE, MAX_ANGLE)
+    self.ACTION_MAGNITUDE = (MIN_MAGNITUDE, MAX_MAGNITUDE)
 
     def __init__(self, map_size=20, mode="random"):
         """
@@ -49,16 +51,23 @@ class CapEnv(gym.Env):
         """
 
         if map_size is None:
-            self._env, self.team_home = CreateMap.gen_map('map', dim=self.map_size[0], rand_zones=STOCH_ZONES)
+            self._env, self.team_home, self.agents = CreateMap.gen_map('map', dim=self.map_size[0], rand_zones=STOCH_ZONES)
         else:
-            self._env, self.team_home = CreateMap.gen_map('map', map_size, rand_zones=STOCH_ZONES)
+            self._env, self.team_home, self.agents = CreateMap.gen_map('map', map_size, rand_zones=STOCH_ZONES)
 
         self.map_size = (len(self._env), len(self._env[0]))
 
         if policy_blue is not None: self.policy_blue = policy_blue
         if policy_red is not None: self.policy_red = policy_red
+            
+        #Changed action space to continuous for every agent.
+        action_dimensionality = []
+        action = spaces.Box(low = np.array([self.ACTION_DIRECTION[0], self.ACTION_MAGNITUDE[0]]), high = np.array([self.ACTION_DIRECTION[1], self.ACTION_MAGNITUDE[1]]), dtype = np.float32)
 
-        self.action_space = spaces.Discrete(len(self.ACTION) ** (NUM_BLUE + NUM_UAV))
+        for _ in range(NUM_BLUE + NUM_UAV):
+            action_dimensionality.append(action)
+
+        self.action_space = spaces.Tuple(tuple(action_dimensionality))
 
         self.blue_win = False
         self.red_win = False
@@ -94,16 +103,20 @@ class CapEnv(gym.Env):
         for y in range(len(complete_map)):
             for x in range(len(complete_map[0])):
                 if complete_map[x][y] == TEAM1_UGV:
-                    cur_ent = GroundVehicle([x, y], static_map, TEAM1_BACKGROUND)
+                    xt, yt = self.agents[(x, y)]
+                    cur_ent = GroundVehicle([x, y], [xt, yt], static_map, TEAM1_BACKGROUND)
                     team_blue.append(cur_ent)
                 elif complete_map[x][y] == TEAM1_UAV:
-                    cur_ent = AerialVehicle([x, y], static_map, TEAM1_BACKGROUND)
+                    xt, yt = self.agents[(x, y)]
+                    cur_ent = AerialVehicle([x, y], [xt, yt], static_map, TEAM1_BACKGROUND)
                     team_blue.insert(0, cur_ent)
                 elif complete_map[x][y] == TEAM2_UGV:
-                    cur_ent = GroundVehicle([x, y], static_map, TEAM2_BACKGROUND)
+                    xt, yt = self.agents[(x, y)]
+                    cur_ent = GroundVehicle([x, y], [xt, yt], static_map, TEAM2_BACKGROUND)
                     team_red.append(cur_ent)
                 elif complete_map[x][y] == TEAM2_UAV:
-                    cur_ent = AerialVehicle([x, y], static_map, TEAM2_BACKGROUND)
+                    xt, yt = self.agents[(x, y)]
+                    cur_ent = AerialVehicle([x, y], [xt, yt], static_map, TEAM2_BACKGROUND)
                     team_red.insert(0, cur_ent)
 
         return team_blue, team_red
@@ -134,6 +147,7 @@ class CapEnv(gym.Env):
 
         return reward
 
+    #TODO: Integreate.
     def create_observation_space(self):
         """
         Creates the observation space in self.observation_space
@@ -145,6 +159,8 @@ class CapEnv(gym.Env):
         team    : int
             Team to create obs space for
         """
+
+        # TODO: Edit for large discreteised environemnt.
 
         self.observation_space_blue = np.full_like(self._env, -1)
         for agent in self.team_blue:
@@ -172,7 +188,6 @@ class CapEnv(gym.Env):
                             not (locy < 0 or locy > self.map_size[1] - 1):
                         self.observation_space_red[locx][locy] = self._env[locx][locy]
 
-        # TODO need to be added observation for grey team
         self.observation_space_grey = np.full_like(self._env, -1)
 
     @property
@@ -205,8 +220,21 @@ class CapEnv(gym.Env):
 
     @property
     def get_obs_grey(self):
-        return np.copy(self.observation_space_grey)
+        return np.copy(self.observation_space_grey)n
 
+    @staticmethod
+    def in_range (loc1, loc2, a_range):
+
+        '''
+        Returns whether the two locations are less than or equal to some distance apart.
+        '''
+
+        distance = ((loc1[0] - loc2[0]) ** 2) + ((loc1[1] - loc2[1]) ** 2)
+        
+        if distance <= a_range:
+            return true
+        else:
+            return false
 
     def _interaction_determ(self, entity):
         """
@@ -222,24 +250,24 @@ class CapEnv(gym.Env):
             Represents which team the unit belongs to
         """
         loc = entity.get_loc()
+        loct = entity.get_loct()
         cur_range = entity.a_range
         for x in range(-cur_range, cur_range + 1):
             for y in range(-cur_range, cur_range + 1):
                 locx, locy = x + loc[0], y + loc[1]
-                if (x * x + y * y <= cur_range ** 2) and \
-                        not (locx < 0 or locx > self.map_size[0] - 1) and \
+                if not (locx < 0 or locx > self.map_size[0] - 1) and \
                         not (locy < 0 or locy > self.map_size[1] - 1):
-                    if entity.team == TEAM1_BACKGROUND and self._env[locx][locy] == TEAM2_UGV:
+                    if entity.team == TEAM1_BACKGROUND and self._env[locx][locy] == TEAM2_UGV and in_range(self.agent[(locx, locy)], loct, cur_range):
                         if self.team_home[loc] == TEAM2_BACKGROUND:
                             entity.isAlive = False
                             self._env[loc] = DEAD
                             break
-                    elif entity.team == TEAM2_BACKGROUND and self._env[locx][locy] == TEAM1_UGV:
+                    elif entity.team == TEAM2_BACKGROUND and self._env[locx][locy] == TEAM1_UGV and in_range(self.agent[(locx, locy)], loct, cur_range):
                         if self.team_home[loc] == TEAM1_BACKGROUND:
                             entity.isAlive = False
                             self._env[loc] = DEAD
                             break
-
+    
     def _interaction_stoch(self, entity):
         """
         Checks if a unit is dead
@@ -254,11 +282,12 @@ class CapEnv(gym.Env):
             Represents which team the unit belongs to
         """
         loc = entity.get_loc()
+        loct = entity.get_loct()
         cur_range = entity.a_range
         n_friends = 0
         n_enemies = 0
         flag = False
-        if entity.team == self.team_home[loc]:
+        if entity.team == self.team_home[(int(loc[0], loc[1]))]:
             n_friends += 1
         else:
             n_enemies += 1
@@ -266,18 +295,17 @@ class CapEnv(gym.Env):
         for x in range(-cur_range, cur_range + 1):
             for y in range(-cur_range, cur_range + 1):
                 locx, locy = x + loc[0], y + loc[1]
-                if (x * x + y * y <= cur_range ** 2) and \
-                        not (locx < 0 or locx > self.map_size[0] - 1) and \
+                if not (locx < 0 or locx > self.map_size[0] - 1) and \
                         not (locy < 0 or locy > self.map_size[1] - 1):
-                    if entity.team == TEAM1_BACKGROUND and self._env[locx][locy] == TEAM2_UGV:
+                    if entity.team == TEAM1_BACKGROUND and self._env[locx][locy] == TEAM2_UGV and in_range(self.agent[(locx, locy)], loct, cur_range):
                         n_enemies += 1
                         flag = True
-                    elif entity.team == TEAM2_BACKGROUND and self._env[locx][locy] == TEAM1_UGV:
+                    elif entity.team == TEAM2_BACKGROUND and self._env[locx][locy] == TEAM1_UGV and in_range(self.agent[(locx, locy)], loct, cur_range):
                         n_enemies += 1
                         flag = True
-                    elif entity.team == TEAM1_BACKGROUND and self._env[locx][locy] == TEAM1_UGV:
+                    elif entity.team == TEAM1_BACKGROUND and self._env[locx][locy] == TEAM1_UGV and in_range(self.agent[(locx, locy)], loct, cur_range):
                         n_friends += 1
-                    elif entity.team == TEAM2_BACKGROUND and self._env[locx][locy] == TEAM2_UGV:
+                    elif entity.team == TEAM2_BACKGROUND and self._env[locx][locy] == TEAM2_UGV and in_range(self.agent[(locx, locy)], loct, cur_range):
                         n_friends += 1
         if flag and np.random.rand() > n_friends/(n_friends + n_enemies):
 
@@ -296,6 +324,7 @@ class CapEnv(gym.Env):
         self.np_random, seed = seeding.np_random(seed)
         return [seed]
 
+    #TODO: Integrate.
     def step(self, entities_action=None, cur_suggestions=None):
         """
         Takes one step in the cap the flag game
@@ -397,6 +426,7 @@ class CapEnv(gym.Env):
 
         return self.state, reward, isDone, info
 
+    #TODO: Integrate.
     def render(self, mode='human'):
         """
         Renders the screen options="obs, env"
@@ -429,6 +459,7 @@ class CapEnv(gym.Env):
 
         return self.viewer.render(return_rgb_array = mode=='rgb_array')
 
+    #TODO: Integrate.
     def _env_render(self, env, rend_loc, rend_size):
         map_h = len(env[0])
         map_w = len(env)

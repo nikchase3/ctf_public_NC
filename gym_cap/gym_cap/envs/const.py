@@ -13,6 +13,17 @@ UAV_RANGE = 4
 UGV_RANGE = 3
 UAV_A_RANGE = 0
 UGV_A_RANGE = 2
+UGV_SIZE = 1
+UAV_SIZE = 1
+
+# Continuous additions:
+DISCRETEISE_SIZE = 100   #How many observation tiles to map a single tile to.
+MAX_DIRECTION = 30      #Maximum angle change from current heading.
+MIN_MAGNITUDE = 0
+MAX_MAGNITUDE = 1
+
+# TODO: Implement formally later.
+
 
 # Model
 RL_SUGGESTIONS = False

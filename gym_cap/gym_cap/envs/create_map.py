@@ -2,6 +2,7 @@ import numpy as np
 from noise import SimplexNoise
 from .const import *
 from .continuous import Continuous
+import uuid
 
 class CreateMap:
     """This class generates a random map
@@ -33,16 +34,13 @@ class CreateMap:
             4   : gray units
         """
 
-        #TODO: How to use existing grid (if it is to be used at all). Probably using it to retain closest cell value
-        #and which areas are each teams'.
-
         # init the seed and set new_map to zeros
         if not in_seed == None:
             np.random.seed(in_seed)
         new_map = np.zeros([dim, dim], dtype=int)
 
         # Create a SimpleNoise object for terrain generation.
-        continousTerrain = Continuous(dim, dim, None, in_seed, None, None)
+        # continousTerrain = Continuous(dim, dim, None, in_seed, None, None)
 
         # zones init
         new_map[:,:] = TEAM2_BACKGROUND
@@ -69,29 +67,31 @@ class CreateMap:
         # the static map is ready
         static_map = np.copy(new_map)
 
+        # Stores agents as tuple of (fakeX, fakeY) as key and and (locationX, locationY) as mapping.
+        agents = {}
+
         for i in range(map_obj[0]):
-            new_map = CreateMap.populate_map(new_map,
-                                 TEAM1_BACKGROUND, TEAM1_UGV)
+            new_map = CreateMap.populate_map(new_map
+                                 TEAM1_BACKGROUND, TEAM1_UGV, agents)
         for i in range(map_obj[1]):
             new_map = CreateMap.populate_map(new_map,
-                                 TEAM1_BACKGROUND, TEAM1_UAV)
+                                 TEAM1_BACKGROUND, TEAM1_UAV, agents)
         for i in range(map_obj[2]):
             new_map = CreateMap.populate_map(new_map,
-                                 TEAM2_BACKGROUND, TEAM2_UGV)
+                                 TEAM2_BACKGROUND, TEAM2_UGV, agents)
         for i in range(map_obj[3]):
             new_map = CreateMap.populate_map(new_map,
-                                 TEAM2_BACKGROUND, TEAM2_UAV)
+                                 TEAM2_BACKGROUND, TEAM2_UAV, agents)
 
-        # TODO: change zone for grey team to complete map
         for i in range(map_obj[4]):
             new_map = CreateMap.populate_map(new_map,
-                                 TEAM2_BACKGROUND, TEAM3_UGV)
+                                 TEAM2_BACKGROUND, TEAM3_UGV, agents)
 
         #np.save('map.npy', new_map)
-        return new_map, static_map
+        return new_map, static_map, agents
 
     @staticmethod
-    def populate_map(new_map, code_where, code_what):
+    def populate_map(new_map, code_where, code_what, agents = None):
         """
         Function
             Adds "code_what" to a random location of "code_where" at "new_map"
@@ -112,4 +112,11 @@ class CreateMap:
             if new_map[lx,ly] == code_where:
                 break
         new_map[lx,ly] = code_what
+
+        # Dictoinary passed by refernce and therefor the orignal is mutated to include "true" coordinates of the agents.
+        if agents is not None:
+            agents[(lx, ly)] = (lx + np.random.random(), ly + np.random.random())
+
+        # Insert code to dicionary all the agents / assign them unique IDS. 
+
         return new_map
