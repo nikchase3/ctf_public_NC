@@ -100,24 +100,40 @@ class CapEnv(gym.Env):
         team_blue = []
         team_red = []
 
+        # Dictionary of agent locations of form (fakeX, fakeY) : [agent]
+        agentLocations = {}
+
         for y in range(len(complete_map)):
             for x in range(len(complete_map[0])):
+
+                self.agentLocations[x, y] = []
+
+                if static_map[x, y] == TEAM1_FLAG:
+                    self.team1flag = (x, y)
+
+                if static_map[x, y] == TEAM2_FLAG:
+                    self.team2flag = (x, y)
+
                 if complete_map[x][y] == TEAM1_UGV:
                     xt, yt = self.agents[(x, y)]
                     cur_ent = GroundVehicle([x, y], [xt, yt], static_map, TEAM1_BACKGROUND)
                     team_blue.append(cur_ent)
+                    agentLocations[x, y].append(cur_ent)
                 elif complete_map[x][y] == TEAM1_UAV:
                     xt, yt = self.agents[(x, y)]
                     cur_ent = AerialVehicle([x, y], [xt, yt], static_map, TEAM1_BACKGROUND)
                     team_blue.insert(0, cur_ent)
+                    agentLocations[x, y].append(cur_ent)
                 elif complete_map[x][y] == TEAM2_UGV:
                     xt, yt = self.agents[(x, y)]
                     cur_ent = GroundVehicle([x, y], [xt, yt], static_map, TEAM2_BACKGROUND)
                     team_red.append(cur_ent)
+                    agentLocations[x, y].append(cur_ent)
                 elif complete_map[x][y] == TEAM2_UAV:
                     xt, yt = self.agents[(x, y)]
                     cur_ent = AerialVehicle([x, y], [xt, yt], static_map, TEAM2_BACKGROUND)
                     team_red.insert(0, cur_ent)
+                    agentLocations[x, y].append(cur_ent)
 
         return team_blue, team_red
 
@@ -150,7 +166,7 @@ class CapEnv(gym.Env):
     #TODO: Integreate.
     def create_observation_space(self):
         """
-        Creates the observation space in self.observation_space
+        Creates the observation space in self.observation_space. Also creates a discreteised observation space.
 
         Parameters
         ----------
@@ -257,16 +273,24 @@ class CapEnv(gym.Env):
                 locx, locy = x + loc[0], y + loc[1]
                 if not (locx < 0 or locx > self.map_size[0] - 1) and \
                         not (locy < 0 or locy > self.map_size[1] - 1):
-                    if entity.team == TEAM1_BACKGROUND and self._env[locx][locy] == TEAM2_UGV and in_range(self.agent[(locx, locy)], loct, cur_range):
-                        if self.team_home[loc] == TEAM2_BACKGROUND:
-                            entity.isAlive = False
-                            self._env[loc] = DEAD
-                            break
-                    elif entity.team == TEAM2_BACKGROUND and self._env[locx][locy] == TEAM1_UGV and in_range(self.agent[(locx, locy)], loct, cur_range):
+                    if entity.team == TEAM1_BACKGROUND and TEAM2_UGV in self._env[locx][locy]):
+                        
+                                if self.team_home[loc] == TEAM2_BACKGROUND:
+                                    for agent in self.agentLocations[locx, locy]:
+                                        if agent.isAlive and agent.full_type is TEAM2_UGV and in_range(agent.loct, loct, cur_range):
+                                            entity.isAlive = False
+                                            self._env[loc].remove(TEAM2_UGV)
+                                            self._env[loc].append(DEAD)
+                                            break
+
+                    elif entity.team == TEAM2_BACKGROUND and TEAM1_UGV in self._env[locx][locy] and in_range(self.agent[(locx, locy)], loct, cur_range):
                         if self.team_home[loc] == TEAM1_BACKGROUND:
-                            entity.isAlive = False
-                            self._env[loc] = DEAD
-                            break
+                            for agent in self.agentLocations[locx, locy]:
+                                        if agent.isAlive and agent.full_type is TEAM1_UGV and in_range(agent.loct, loct, cur_range):
+                                            entity.isAlive = False
+                                            self._env[loc].remove(TEAM1_UGV)
+                                            self._env[loc].append(DEAD)
+                                            break
     
     def _interaction_stoch(self, entity):
         """
@@ -297,16 +321,24 @@ class CapEnv(gym.Env):
                 locx, locy = x + loc[0], y + loc[1]
                 if not (locx < 0 or locx > self.map_size[0] - 1) and \
                         not (locy < 0 or locy > self.map_size[1] - 1):
-                    if entity.team == TEAM1_BACKGROUND and self._env[locx][locy] == TEAM2_UGV and in_range(self.agent[(locx, locy)], loct, cur_range):
-                        n_enemies += 1
-                        flag = True
-                    elif entity.team == TEAM2_BACKGROUND and self._env[locx][locy] == TEAM1_UGV and in_range(self.agent[(locx, locy)], loct, cur_range):
-                        n_enemies += 1
-                        flag = True
-                    elif entity.team == TEAM1_BACKGROUND and self._env[locx][locy] == TEAM1_UGV and in_range(self.agent[(locx, locy)], loct, cur_range):
-                        n_friends += 1
-                    elif entity.team == TEAM2_BACKGROUND and self._env[locx][locy] == TEAM2_UGV and in_range(self.agent[(locx, locy)], loct, cur_range):
-                        n_friends += 1
+                    if entity.team == TEAM1_BACKGROUND and TEAM2_UGV in self._env[locx][locy]:
+                        for agent in self.agentLocations[locx, locy]:
+                            if agent.isAlive and agent.full_type is TEAM2_UGV and in_range(agent.loct, loct, cur_range): 
+                                n_enemies += 1
+                                flag = True
+                    elif entity.team == TEAM2_BACKGROUND and  TEAM1_UGV in self._env[locx][locy]:
+                        for agent in self.agentLocations[locx, locy]:
+                            if agent.isAlive and agent.full_type is TEAM1_UGV and in_range(agent.loct, loct, cur_range):
+                                n_enemies += 1
+                                flag = True
+                    elif entity.team == TEAM1_BACKGROUND and  TEAM1_UGV self._env[locx][locy]:
+                        for agent in self.agentLocations[locx, locy]:
+                            if agent.isAlive and agent.full_type is TEAM1_UGV and in_range(agent.loct, loct, cur_range):
+                                n_friends += 1
+                    elif entity.team == TEAM2_BACKGROUND and self._env[locx][locy] == TEAM2_UGV:
+                        for agent in self.agentLocations[locx, locy]:
+                            if agent.isAlive and agent.full_type is TEAM2_UGV and in_range(agent.loct, loct, cur_range):
+                                n_friends += 1
         if flag and np.random.rand() > n_friends/(n_friends + n_enemies):
 
             entity.isAlive = False
@@ -342,46 +374,37 @@ class CapEnv(gym.Env):
             info    :
         """
 
-        move_list = []
         # Get actions from uploaded policies
         try:
-            move_list_red = self.policy_red.gen_action(self.team_red,self.observation_space_red,free_map=self.team_home)
+            move_list_red = self.policy_red.gen_action(self.team_red, self.observation_space_red, free_map = self.team_home)
         except:
             print("No valid policy for red team")
             exit()
 
         if entities_action == None:
             try:
-                move_list_blue = self.policy_blue.gen_action(self.team_blue,self.observation_space_blue,free_map=self.team_home)
+                move_list_blue = self.policy_blue.gen_action(self.team_blue, self.observation_space_blue, free_map=self.team_home)
             except:
                 print("No valid policy for blue team and no actions provided")
                 exit()
-        elif type(entities_action) is int:
-            if entities_action >= len(self.ACTION) ** (NUM_BLUE + NUM_UAV):
-                sys.exit("ERROR: You entered too many moves. \
-                         There are " + str(NUM_BLUE + NUM_UAV) + " entities.")
-            while len(move_list) < (NUM_BLUE + NUM_UAV):
-                move_list_blue.append(entities_action % 5)
-                entities_action = int(entities_action / 5)
         else:
             if len(entities_action) > NUM_BLUE + NUM_UAV:
                 sys.exit("ERROR: You entered too many moves. \
                          There are " + str(NUM_BLUE + NUM_UAV) + " entities.")
-            move_list_blue = entities_action
+            move_list_blue = list(entities_action)
 
 
         # Move team1
         for idx, act in enumerate(move_list_blue):
             if STOCH_TRANSITIONS and self.np_random.rand() < 0.1:
-                act = self.np_random.randint(0,len(self.ACTION))
-            self.team_blue[idx].move(self.ACTION[act], self._env, self.team_home)
+                act = (random.randint(-MAX_DIRECTION, MAX_DIRECTION), random.uniform(MIN_MAGNITUDE, MAX_MAGNITUDE)))
+            self.team_blue[idx].move(act, self._env, self.team_home, self.agentLocations)
 
         # Move team2
         for idx, act in enumerate(move_list_red):
             if STOCH_TRANSITIONS and self.np_random.rand() < 0.1:
-                act = self.np_random.randint(0,len(self.ACTION))
-            self.team_red[idx].move(self.ACTION[act], self._env, self.team_home)
-
+                act = (random.randint(-MAX_DIRECTION, MAX_DIRECTION), random.uniform(MIN_MAGNITUDE, MAX_MAGNITUDE)))
+            self.team_red[idx].move(self.ACTION[act], self._env, self.team_home, self.agentLocations)
 
         # Check for dead
         for entity in self.team_blue:
@@ -399,9 +422,10 @@ class CapEnv(gym.Env):
             if i.isAlive and not i.air:
                 has_alive_entity = True
                 locx, locy = i.get_loc()
-                if self.team_home[locx][locy] == TEAM1_FLAG:
+
+                # TODO: Change flag capture condition
+                if in_range(i.get_loct(), self.team1flag, 2 * i.size)
                     self.red_win = True
-        # TODO Change last condition for multi agent model
         if not has_alive_entity and self.mode != "sandbox" and self.mode != "human_blue":
             self.blue_win = True
 
@@ -409,8 +433,8 @@ class CapEnv(gym.Env):
         for i in self.team_blue:
             if i.isAlive and not i.air:
                 has_alive_entity = True
-                locx, locy = i.get_loc()
-                if self.team_home[locx][locy] == TEAM2_FLAG:
+
+                if in_range(i.get_loct(), self.team2flag, 2 * i.size):
                     self.blue_win = True
         if not has_alive_entity:
             self.red_win = True

@@ -67,31 +67,30 @@ class CreateMap:
         # the static map is ready
         static_map = np.copy(new_map)
 
-        # Stores agents as tuple of (fakeX, fakeY) as key and and (locationX, locationY) as mapping.
-        agents = {}
+        for x 
 
         for i in range(map_obj[0]):
-            new_map = CreateMap.populate_map(new_map
-                                 TEAM1_BACKGROUND, TEAM1_UGV, agents)
+            new_map = CreateMap.populate_map(static_map, new_map
+                                 TEAM1_BACKGROUND, TEAM1_UGV)
         for i in range(map_obj[1]):
-            new_map = CreateMap.populate_map(new_map,
-                                 TEAM1_BACKGROUND, TEAM1_UAV, agents)
+            new_map = CreateMap.populate_map(static_map, new_map,
+                                 TEAM1_BACKGROUND, TEAM1_UAV)
         for i in range(map_obj[2]):
-            new_map = CreateMap.populate_map(new_map,
-                                 TEAM2_BACKGROUND, TEAM2_UGV, agents)
+            new_map = CreateMap.populate_map(static_map, new_map,
+                                 TEAM2_BACKGROUND, TEAM2_UGV)
         for i in range(map_obj[3]):
-            new_map = CreateMap.populate_map(new_map,
-                                 TEAM2_BACKGROUND, TEAM2_UAV, agents)
+            new_map = CreateMap.populate_map(static_map, new_map,
+                                 TEAM2_BACKGROUND, TEAM2_UAV)
 
         for i in range(map_obj[4]):
-            new_map = CreateMap.populate_map(new_map,
-                                 TEAM2_BACKGROUND, TEAM3_UGV, agents)
+            new_map = CreateMap.populate_map(static_map, new_map,
+                                 TEAM2_BACKGROUND, TEAM3_UGV)
 
         #np.save('map.npy', new_map)
-        return new_map, static_map, agents
+        return new_map, static_map
 
     @staticmethod
-    def populate_map(new_map, code_where, code_what, agents = None):
+    def populate_map(static_map, new_map, code_where, code_what):
         """
         Function
             Adds "code_what" to a random location of "code_where" at "new_map"
@@ -109,13 +108,10 @@ class CreateMap:
         while True:
             lx = np.random.randint(0, dimx)
             ly = np.random.randint(0, dimy)
-            if new_map[lx,ly] == code_where:
+            if static_map[lx,ly] == code_where and len(new_map[lx, ly]) is 0:
                 break
-        new_map[lx,ly] = code_what
 
-        # Dictoinary passed by refernce and therefor the orignal is mutated to include "true" coordinates of the agents.
-        if agents is not None:
-            agents[(lx, ly)] = (lx + np.random.random(), ly + np.random.random())
+        new_map[lx,ly] = [code_what]
 
         # Insert code to dicionary all the agents / assign them unique IDS. 
 

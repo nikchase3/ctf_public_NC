@@ -5,12 +5,14 @@ from .const import *
 # from .create_map import CreateMap
 #from .enemy_ai import EnemyAI
 
+from math import cos, sin, radians
+
 
 class Agent:
     """This is a parent class for all agents.
     It creates an instance of agent in specific location"""
 
-    def __init__(self, loc, loct, map_only, team_number):
+    def __init__(self, loc, loct, map_only, team_number, full_type):
         """
         Constructor
 
@@ -24,7 +26,7 @@ class Agent:
         self.isAlive = True
         self.x, self.y = loc
         self.xt, self.yt = loct #True (float) location.
-        self.heading = #TODO: Each agent retains a heading from 0 to 360 deg.; angles operate as in standard polar coord. system.
+        self.heading = 0
         self.step = UGV_STEP
         self.range = UGV_RANGE
         self.a_range = UGV_A_RANGE
@@ -33,8 +35,66 @@ class Agent:
         #self.ai = EnemyAI(map_only)
         self.team = team_number
         self.move_selected = False
+        self.full_type = full_type
 
-    def move(self, action, env, team_home):
+    def collision (self, env, team_home, agents, new_loc):
+        
+        def in_range (loc1, loc2, a_range):
+
+            '''
+            Returns whether the two locations are less than or equal to some distance apart.
+            '''
+
+            distance = ((loc1[0] - loc2[0]) ** 2) + ((loc1[1] - loc2[1]) ** 2)
+            
+            if distance <= a_range:
+                return true
+            else:   
+                return false
+
+        def static_collision (self):
+
+            overlapping_tiles = []
+            size_mod = int(self.size * 2)
+
+            new_locx, new_locy = new_loc
+
+            for x in range (-size_mod, size_mod + 1):
+                for y in range(-size_mod, size_mod + 1):
+                    overlapping_tiles.append(int(new_loc[0]) + x, int(new_loc[1]) + y) 
+
+            for tile in overlapping_tiles:
+                if env[tile] == OBSTACLE:
+                    if in_range(new_loc, (tile[0] + .5, tile[1] + .5), self.size * 2):
+                        return True
+
+            return False
+
+        def entity_collision (self):
+
+            overlapping_tiles = []
+            size_mod = int(self.size * 2)
+
+            new_locx, new_locy = new_loc
+
+            for x in range (-size_mod, size_mod + 1):
+                for y in range(-size_mod, size_mod + 1):
+                    overlapping_tiles.append(int(new_loc[0]) + x, int(new_loc[1]) + y)     
+
+            for tile in overlapping_tiles:
+                for entity in agents[tile]:
+                    if entity is not self:
+                        if in_range(new_loc, entity.get_loc(), self.size * 2):
+                            return True
+
+            return False
+
+        if not self.static_collision() and not self.entity_collision():
+            return False
+        else:
+            return True
+
+    def move(self, action, env, team_home, agents):
         """
         Moves each unit individually. Checks if action is valid first.
 
@@ -51,150 +111,39 @@ class Agent:
         """
         if not self.isAlive:
             return
-        if action == "X":
+        if action[0] == 0 or action[1] == 0:
             pass
-        elif action == "N":
-            # Air moves north
-            if self.air:
-                if self.y - self.step >= 0 \
-                        and env[self.x][self.y - self.step] != TEAM1_UGV \
-                        and env[self.x][self.y - self.step] != TEAM2_UGV \
-                        and env[self.x][self.y - self.step] != TEAM1_UAV \
-                        and env[self.x][self.y - self.step] != TEAM2_UAV:
-                    env[self.x][self.y] = team_home[self.x][self.y]
-                    self.y -= self.step
-                    if self.team == TEAM1_BACKGROUND:
-                        env[self.x][self.y] = TEAM1_UAV
-                    else:
-                        env[self.x][self.y] = TEAM2_UAV
-                elif self.y - self.step < 0:
-                    env[self.x][self.y] = team_home[self.x][self.y]
-                    self.y = 0
-                    if self.team == TEAM1_BACKGROUND:
-                        env[self.x][self.y] = TEAM1_UAV
-                    else:
-                        env[self.x][self.y] = TEAM2_UAV
-            # Ground moves north
+        if action[0] < -MAX_DIRECTION or action[0] > MAX_DIRECTION or action[1] < MIN_MAGNITUDE or action[1] > MAX_MAGNITUDE:
+            raise ValueError("Action not within bounds.")
+        
+        direction, magnitude = action
+        magnitude *= self.step
+
+        oldx = self.x
+        oldy = self.y 
+
+        self.heading += direction
+        heading_rad = radians(self.heading)
+        step_size = magnitude / (DISCRETE_SIZE * magnitude)
+
+        for _ in range(DISCRETE_SIZE * magnitude):
+            newx = self.xt + (step_size * cos(heading_rad))
+            newy = self.yt + (step_size * sin(heading_rad))
+
+            if not self.collision(env, team_home, agents, (newx, newy)):
+                self.xt = newx
+                self.yt = newy
             else:
-                if self.y - self.step >= 0 \
-                        and env[self.x][self.y - self.step] != OBSTACLE \
-                        and env[self.x][self.y - self.step] != TEAM1_UGV \
-                        and env[self.x][self.y - self.step] != TEAM2_UGV \
-                        and env[self.x][self.y - self.step] != TEAM1_UAV \
-                        and env[self.x][self.y - self.step] != TEAM2_UAV:
-                    env[self.x][self.y] = team_home[self.x][self.y]
-                    self.y -= self.step
-                    if self.team == TEAM1_BACKGROUND:
-                        env[self.x][self.y] = TEAM1_UGV
-                    else:
-                        env[self.x][self.y] = TEAM2_UGV
-        elif action == "S":
-            # Air moves south
-            if self.air:
-                if self.y + self.step < len(env[0]) \
-                        and env[self.x][self.y + self.step] != TEAM1_UGV \
-                        and env[self.x][self.y + self.step] != TEAM2_UGV \
-                        and env[self.x][self.y + self.step] != TEAM1_UAV \
-                        and env[self.x][self.y + self.step] != TEAM2_UAV:
-                    env[self.x][self.y] = team_home[self.x][self.y]
-                    self.y += self.step
-                    if self.team == TEAM1_BACKGROUND:
-                        env[self.x][self.y] = TEAM1_UAV
-                    else:
-                        env[self.x][self.y] = TEAM2_UAV
-                elif self.y + self.step >= len(env[0]):
-                    env[self.x][self.y] = team_home[self.x][self.y]
-                    self.y = len(env[0]) - 1
-                    if self.team == 1:
-                        env[self.x][self.y] = TEAM1_UAV
-                    else:
-                        env[self.x][self.y] = TEAM2_UAV
-            # Ground moves south
-            else:
-                if self.y + self.step < len(env[0]) \
-                        and env[self.x][self.y + self.step] != OBSTACLE \
-                        and env[self.x][self.y + self.step] != TEAM1_UGV \
-                        and env[self.x][self.y + self.step] != TEAM2_UGV \
-                        and env[self.x][self.y + self.step] != TEAM1_UAV \
-                        and env[self.x][self.y + self.step] != TEAM2_UAV:
-                    env[self.x][self.y] = team_home[self.x][self.y]
-                    self.y += self.step
-                    if self.team == TEAM1_BACKGROUND:
-                        env[self.x][self.y] = TEAM1_UGV
-                    else:
-                        env[self.x][self.y] = TEAM2_UGV
-        elif action == "E":
-            # Air moves east
-            if self.air:
-                if self.x + self.step < len(env) \
-                        and env[self.x + self.step][self.y] != TEAM1_UGV \
-                        and env[self.x + self.step][self.y] != TEAM2_UGV \
-                        and env[self.x + self.step][self.y] != TEAM1_UAV \
-                        and env[self.x + self.step][self.y] != TEAM2_UAV:
-                    env[self.x][self.y] = team_home[self.x][self.y]
-                    self.x += self.step
-                    if self.team == TEAM1_BACKGROUND:
-                        env[self.x][self.y] = TEAM1_UAV
-                    else:
-                        env[self.x][self.y] = TEAM2_UAV
-                elif self.x + self.step >= len(env):
-                    env[self.x][self.y] = team_home[self.x][self.y]
-                    self.x = len(env) - 1
-                    if self.team == TEAM1_BACKGROUND:
-                        env[self.x][self.y] = TEAM1_UAV
-                    else:
-                        env[self.x][self.y] = TEAM2_UAV
-            # Ground moves east
-            else:
-                if self.x + self.step < len(env) \
-                        and env[self.x + self.step][self.y] != OBSTACLE \
-                        and env[self.x + self.step][self.y] != TEAM1_UGV \
-                        and env[self.x + self.step][self.y] != TEAM2_UGV \
-                        and env[self.x + self.step][self.y] != TEAM1_UAV \
-                        and env[self.x + self.step][self.y] != TEAM2_UAV:
-                    env[self.x][self.y] = team_home[self.x][self.y]
-                    self.x += self.step
-                    if self.team == TEAM1_BACKGROUND:
-                        env[self.x][self.y] = TEAM1_UGV
-                    else:
-                        env[self.x][self.y] = TEAM2_UGV
-        elif action == "W":
-            # Air moves west
-            if self.air:
-                if self.x - self.step >= 0 \
-                        and env[self.x - self.step][self.y] != TEAM1_UGV \
-                        and env[self.x - self.step][self.y] != TEAM2_UGV \
-                        and env[self.x - self.step][self.y] != TEAM1_UAV \
-                        and env[self.x - self.step][self.y] != TEAM2_UAV:
-                    env[self.x][self.y] = team_home[self.x][self.y]
-                    self.x -= self.step
-                    if self.team == TEAM1_BACKGROUND:
-                        env[self.x][self.y] = TEAM1_UAV
-                    else:
-                        env[self.x][self.y] = TEAM2_UAV
-                elif self.x - self.step < 0:
-                    env[self.x][self.y] = team_home[self.x][self.y]
-                    self.x = 0
-                    if self.team == TEAM1_BACKGROUND:
-                        env[self.x][self.y] = TEAM1_UAV
-                    else:
-                        env[self.x][self.y] = TEAM2_UAV
-            # Ground moves west
-            else:
-                if self.x - self.step >= 0 \
-                        and env[self.x - self.step][self.y] != OBSTACLE \
-                        and env[self.x - self.step][self.y] != TEAM1_UGV \
-                        and env[self.x - self.step][self.y] != TEAM2_UGV \
-                        and env[self.x - self.step][self.y] != TEAM1_UAV \
-                        and env[self.x - self.step][self.y] != TEAM2_UAV:
-                    env[self.x][self.y] = team_home[self.x][self.y]
-                    self.x -= self.step
-                    if self.team == TEAM1_BACKGROUND:
-                        env[self.x][self.y] = TEAM1_UGV
-                    else:
-                        env[self.x][self.y] = TEAM2_UGV
-        else:
-            print("error: wrong action selected")
+                break
+
+        self.x = int(self.xt)
+        self.y = int(self.yt)
+
+        env[oldx, oldy].remove(self)
+        env[self.x, self.y].append(self)
+
+        agents[(oldx, oldy)].remove(self)
+        agents[(self.x, self.y)].append(self)
 
     def individual_reward(self, env):
         """
@@ -243,7 +192,7 @@ class GroundVehicle(Agent):
     """This is a child class for ground agents. Inherited from Agent class.
     It creates an instance of UGV in specific location"""
 
-    def __init__(self, loc, map_only, team_number):
+    def __init__(self, loc, loct, map_only, team_number, full_type):
         """
         Constructor
 
@@ -252,7 +201,7 @@ class GroundVehicle(Agent):
         self    : object
             CapEnv object
         """
-        Agent.__init__(self, loc, map_only, team_number)
+        Agent.__init__(self, loc, loct, map_only, team_number, full_type)
 
 
 # noinspection PyCallByClass
@@ -260,7 +209,7 @@ class AerialVehicle(Agent):
     """This is a child class for aerial agents. Inherited from Agent class.
     It creates an instance of UAV in specific location"""
 
-    def __init__(self, loc, map_only, team_number):
+    def __init__(self, loc, loct, map_only, team_number, full_type):
         """
         Constructor
 
@@ -269,7 +218,7 @@ class AerialVehicle(Agent):
         self    : object
             CapEnv object
         """
-        Agent.__init__(self, loc, map_only, team_number)
+        Agent.__init__(self, loc, loct, map_only, team_number, full_type)
         self.step = UAV_STEP
         self.range = UAV_RANGE
         self.a_range = UAV_A_RANGE
@@ -281,7 +230,7 @@ class CivilAgent(GroundVehicle):
     """This is a child class for civil agents. Inherited from UGV class.
     It creates an instance of civil in specific location"""
 
-    def __init__(self, loc, map_only, team_number):
+    def __init__(self, loc, loct, map_only, team_number, full_type):
         """
         Constructor
 
@@ -290,6 +239,6 @@ class CivilAgent(GroundVehicle):
         self    : object
             CapEnv object
         """
-        Agent.__init__(self, loc, map_only, team_number)
+        Agent.__init__(self, loc, loct, map_only, team_number, full_type)
         self.direction = [0, 0]
         self.isDone = False

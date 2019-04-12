@@ -49,6 +49,6 @@ class PolicyGen:
         action_out = []
         
         for i in agent_list:
-            action_out.append(self.random.randint(0, 5)) # choose random action
+            action_out.append((random.randint(-MAX_DIRECTION, MAX_DIRECTION), random.uniform(MIN_MAGNITUDE, MAX_MAGNITUDE)))) # choose random action
         
         return action_out

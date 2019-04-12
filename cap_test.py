@@ -19,7 +19,7 @@ t = 0
 rscore = []
 
 policy_blue = policy.random_actions.PolicyGen(env.get_map, env.get_team_blue)
-policy_red = policy.stay_still.PolicyGen(env.get_map, env.get_team_red)
+policy_red = policy.random_actions.PolicyGen(env.get_map, env.get_team_red)
 
 def count_team_units(team_list):
     '''
